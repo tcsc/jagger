@@ -27,6 +27,6 @@ Caveat
 ======
 
 This will probably never be finished. If you're after something actually functional, 
-you're much better off looking at openSUSE/libsolv. People that actually know what 
-they're doing are working on that, as opposed to the half-arsed amatuer hour over 
-here.
+you're much better off looking at [SUSE's libsolv project](https://github.com/openSUSE/libsolv). 
+People that actually know what they're doing are working on that, as opposed to the 
+half-arsed amatuer hour over here.
