@@ -1,7 +1,3 @@
-use std::fmt;
-use std::cmp;
-use std::iter;
-use std::string;
 
 #[deriving(PartialEq, Show)]
 pub enum ArchError { 
@@ -253,7 +249,6 @@ pub enum VersionError {
 
 impl VersionError {
     fn invalid(s: &str) -> VersionError { InvalidVersion (String::from_str(s)) }
-    fn package(s: &str) -> VersionError { InvalidPackageVersion (String::from_str(s)) }
     fn epoch(s: &str) -> VersionError { InvalidEpoch(s.to_string()) }
 }
 
