@@ -2,20 +2,20 @@ use std::collections::{TreeMap};
 use std::vec;
 use std::fmt;
 
-#[deriving(Show, Clone)]
-enum VersionExpression {
+#[deriving(Clone)]
+pub enum VersionExpression {
     Any,
-    Eq (int),
-    Gt (int),
-    Gte (int),
-    Lt (int),
-    Lte (int),
+    Eq (uint),
+    Gt (uint),
+    Gte (uint),
+    Lt (uint),
+    Lte (uint),
     And (Box<VersionExpression>, Box<VersionExpression>),
     Or (Box<VersionExpression>, Box<VersionExpression>),
 }
 
 impl VersionExpression {
-    fn matches(&self, ver: int) -> bool {
+    fn matches(&self, ver: uint) -> bool {
         match *self {
             Any => true,
             Eq(n) => n == ver,
@@ -40,6 +40,21 @@ impl PartialEq for VersionExpression {
             Lte(n) => match *other { Lte(x) => n == x, _ => false },
             And(ref a, ref b) => a.eq(b),
             Or(ref a, ref b) => a.eq(b)
+        }
+    }
+}
+
+impl fmt::Show for VersionExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Any => write!(f, "any"),
+            Eq(n) => write!(f, "= {}", n),
+            Gt(n) => write!(f, "> {}", n),
+            Gte(n) => write!(f, ">= {}", n),
+            Lt(n) => write!(f, "< {}", n),
+            Lte(n) => write!(f, "<= {}", n),
+            And(ref a, ref b) => write!(f, "{} && {}", a, b),
+            Or(ref a, ref b) => write!(f, "{} || {}", a, b)
         }
     }
 }
@@ -120,21 +135,40 @@ fn version_expression_boolean_or()  {
  * A package name and the version of that package required.
  */
 #[deriving(Clone, Eq)]
-struct PkgReq {
+pub struct PkgExp {
     name: String,
-    restriction: VersionExpression 
+    version: VersionExpression 
 }
 
-impl PartialEq for PkgReq {
-    fn eq(&self, other: &PkgReq) -> bool {
-        self.name == other.name && self.restriction == other.restriction
+impl PkgExp {
+    pub fn new(name: &str, version: VersionExpression) -> PkgExp {
+        PkgExp { 
+            name: String::from_str(name),
+            version: version
+        }
     }
 }
+
+impl PartialEq for PkgExp {
+    fn eq(&self, other: &PkgExp) -> bool {
+        self.name == other.name && self.version == other.version
+    }
+}
+
+impl fmt::Show for PkgExp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.name, self.version)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Package - An abstract representation of a package
+// ----------------------------------------------------------------------------
 
 /**
  * The metadata for a given package at a given version.
  */
-struct Package {
+pub struct Package {
     /**
      *
      */
@@ -147,14 +181,14 @@ struct Package {
      * solver doesn't have care about the specifics of versioning in a given 
      * package format. 
      */
-    ordinal: int,
+    ordinal: uint,
 
-    requires: Vec<PkgReq>,
-    conflicts: Vec<PkgReq> 
+    requires: Vec<PkgExp>,
+    conflicts: Vec<PkgExp> 
 }
 
 impl Package {
-    fn new(name: &str, ordinal: int) -> Package {
+    pub fn new(name: &str, ordinal: uint) -> Package {
         Package { 
             name: String::from_str(name),
             ordinal: ordinal,
@@ -164,11 +198,36 @@ impl Package {
     }
 
     /**
-     * Checks to see if this package meets the requirements of a given PkgReq. 
+     * Adds a requirement to the 
      */
-    fn matches(&self, cond: &VersionExpression) -> bool {
-        cond.matches(self.ordinal)
+    pub fn add_requirement(&mut self, name: &str, ver: VersionExpression) {
+        self.requires.push(PkgExp::new(name, ver));
     }
+
+    /**
+     *
+     */
+    pub fn requires<'a>(&'a self) -> &'a [PkgExp] {
+        self.requires.as_slice()
+    }
+
+    pub fn add_conflict(&mut self, name: &str, ver: VersionExpression) {
+        self.conflicts.push(PkgExp::new(name, ver));
+    }
+
+    pub fn conflicts<'a>(&'a self) -> &'a [PkgExp] {
+        self.conflicts.as_slice()
+    }
+
+    /**
+     * Checks to see if this package meets the requirements of a given package 
+     * expression. 
+     */
+    pub fn matches(&self, exp: &PkgExp) -> bool {
+        (self.name == exp.name) && exp.version.matches(self.ordinal)
+    }
+
+    pub fn name<'a>(&'a self) -> &'a str { self.name.as_slice() }
 }
 
 impl PartialEq for Package {
@@ -181,13 +240,39 @@ impl PartialEq for Package {
     }
 }
 
+impl Eq for Package {}
+
+impl PartialOrd for Package {
+    fn lt(&self, other: &Package) -> bool {
+        (self.name < other.name) || (self.ordinal < other.ordinal)
+    }
+}
+
+impl Ord for Package {
+    fn cmp(&self, other: &Package) -> Ordering {
+        if self.name < other.name {
+            Less
+        }
+        else if self.name > other.name {
+            Greater
+        } 
+        else {
+            match self.ordinal {
+                n if n < other.ordinal => Less,
+                n if n > other.ordinal => Greater,
+                _ => Equal
+            }
+        }
+    }
+}
+
 impl Clone for Package {
     fn clone(&self) -> Package {
         Package {
             name: self.name.clone(),
             ordinal: self.ordinal,
             requires: self.requires.clone(),
-            conflicts: self.requires.clone()
+            conflicts: self.conflicts.clone()
         }
     }
 }
@@ -202,71 +287,75 @@ impl fmt::Show for Package {
 // PkgDb - the package metadata database
 // ----------------------------------------------------------------------------
 
-type PkgVec = Vec<Package>;
-type PkgMap = TreeMap<String, PkgVec>;
-
 /**
  * The store for (and ultimate owner of) all the package objects. 
  */
-struct PkgDb {
-    packages: PkgMap   
+pub struct PkgDb {
+    packages: Vec<Package>   
+}
+
+pub trait PkgQuery {
+    fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package>;
+
+    fn select<'a>(&'a self, name: &str, ver: VersionExpression) -> Vec<&'a Package> {
+        self.select_exp(&PkgExp::new(name, ver))
+    }
 }
 
 impl PkgDb {
     /**
      * Constructs a new, empty, package database.
      */
-    fn new() -> PkgDb {
-        PkgDb { packages: TreeMap::new() }
+    pub fn new() -> PkgDb {
+        PkgDb { packages: Vec::new() }
     }
 
     /**
-     * Adds packages to the database. The versions vector is assumed to be 
-     * stored in ascending version order.
+     * Adds packages to the database.
      */
-    fn add_packages(& mut self, name: &str, versions: &[Package]) {
-        self.packages.insert(String::from_str(name), Vec::from_slice(versions));
-    } 
+    pub fn add_packages(& mut self, packages: &[Package]) {
+        self.packages.push_all(packages);
+    }
 
+    pub fn iter<'a>(&'a self) -> ::std::slice::Items<'a, Package> {
+        self.packages.iter()
+    } 
+}
+
+impl PkgQuery for PkgDb {
     /**
      * Selects a set of packages that match a given name and version 
      * expression.
      */
-    fn select<'a>(& 'a self, name: &str, cond: &VersionExpression) -> Vec<&'a Package> {
-        let n = String::from_str(name);
-        match self.packages.find(&n) {
-            Some (ref v) => {
-                v.iter()
-                 .filter(|p| p.matches(cond))
-                 .collect()
-            },
-            None => Vec::new()
-        }
+    fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package> {
+        self.packages.iter()
+                     .filter(|p| p.matches(spec))
+                     .collect()
     }
 }
 
 #[test]
 fn pkgdb_select_non_existant_package_name_returns_empty_vector() {
     let db = PkgDb::new();
-    assert!(db.select("nonesuch", &Any).as_slice() == [])
+    assert!(db.select("nonesuch", Any).as_slice() == [])
 }
 
 #[test]
 fn pkgdb_empty_select_returns_empty_vector() {
     let mut db = PkgDb::new();
-    db.add_packages("alpha", Vec::from_fn(5, |n| Package::new("alpha", n as int)).as_slice());
-    assert!(db.select("nonesuch", &Gt(10)).as_slice() == [])
+    db.add_packages(Vec::from_fn(5, |n| Package::new("alpha", n)).as_slice());
+    assert!(db.select("nonesuch", Gt(10)).as_slice() == [])
 }
 
 #[test]
 fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
-    db.add_packages("alpha", Vec::from_fn(5, |n| Package::new("alpha", n as int)).as_slice());
-    db.add_packages("beta", Vec::from_fn(10, |n| Package::new("beta", n as int)).as_slice());
+    db.add_packages(Vec::from_fn(5, |n| Package::new("alpha", n)).as_slice());
+    db.add_packages(Vec::from_fn(10, |n| Package::new("beta", n)).as_slice());
 
-    let data = Vec::from_fn(4, |n| Package::new("beta", (n as int) + 6));
+    let data = Vec::from_fn(4, |n| Package::new("beta", n + 6));
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
-    let actual = db.select("beta", &Gte(6));
+    let actual = db.select("beta", Gte(6));
 
     println!("expected: {}", expected);
     println!("actual: {}", actual);
