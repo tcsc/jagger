@@ -1,5 +1,5 @@
 mod metadata;
-mod package;
+mod pkg;
 mod solver;
 
 

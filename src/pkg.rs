@@ -165,6 +165,12 @@ impl fmt::Show for PkgExp {
 // Package - An abstract representation of a package
 // ----------------------------------------------------------------------------
 
+#[deriving(Show, Eq, PartialEq)]
+pub enum State {
+    Installed,
+    Available,
+}
+
 /**
  * The metadata for a given package at a given version.
  */
@@ -183,15 +189,26 @@ pub struct Package {
      */
     ordinal: uint,
 
+    state: State,
+
     requires: Vec<PkgExp>,
     conflicts: Vec<PkgExp> 
 }
 
 impl Package {
-    pub fn new(name: &str, ordinal: uint) -> Package {
+    pub fn new_installed(name: &str, ordinal: uint) -> Package {
+        Package::new(name, ordinal, Installed)
+    }
+
+    pub fn new_available(name: &str, ordinal: uint) -> Package {
+        Package::new(name, ordinal, Available)
+    }
+
+    pub fn new(name: &str, ordinal: uint, state: State) -> Package {
         Package { 
             name: String::from_str(name),
             ordinal: ordinal,
+            state: state,
             requires: Vec::new(),
             conflicts: Vec::new() 
         }
@@ -271,6 +288,7 @@ impl Clone for Package {
         Package {
             name: self.name.clone(),
             ordinal: self.ordinal,
+            state: self.state,
             requires: self.requires.clone(),
             conflicts: self.conflicts.clone()
         }
@@ -294,14 +312,6 @@ pub struct PkgDb {
     packages: Vec<Package>   
 }
 
-pub trait PkgQuery {
-    fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package>;
-
-    fn select<'a>(&'a self, name: &str, ver: VersionExpression) -> Vec<&'a Package> {
-        self.select_exp(&PkgExp::new(name, ver))
-    }
-}
-
 impl PkgDb {
     /**
      * Constructs a new, empty, package database.
@@ -319,20 +329,30 @@ impl PkgDb {
 
     pub fn iter<'a>(&'a self) -> ::std::slice::Items<'a, Package> {
         self.packages.iter()
-    } 
-}
+    }
 
-impl PkgQuery for PkgDb {
+    pub fn select<'a>(&'a self, name: &str, ver: VersionExpression) -> Vec<&'a Package> {
+        self.select_exp(&PkgExp::new(name, ver))
+    }
+
+    pub fn installed_packages<'a>(&'a self) -> Vec<&'a Package> {
+        self.packages
+            .iter()
+            .filter(|p| p.state == Installed)
+            .collect()
+    }
+
     /**
      * Selects a set of packages that match a given name and version 
      * expression.
      */
-    fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package> {
+    pub fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package> {
         self.packages.iter()
                      .filter(|p| p.matches(spec))
                      .collect()
-    }
+    } 
 }
+
 
 #[test]
 fn pkgdb_select_non_existant_package_name_returns_empty_vector() {
@@ -343,17 +363,23 @@ fn pkgdb_select_non_existant_package_name_returns_empty_vector() {
 #[test]
 fn pkgdb_empty_select_returns_empty_vector() {
     let mut db = PkgDb::new();
-    db.add_packages(Vec::from_fn(5, |n| Package::new("alpha", n)).as_slice());
+    db.add_packages(Vec::from_fn(5, |n| {
+        Package::new("alpha", n, Available)
+    }).as_slice());
     assert!(db.select("nonesuch", Gt(10)).as_slice() == [])
 }
 
 #[test]
 fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
-    db.add_packages(Vec::from_fn(5, |n| Package::new("alpha", n)).as_slice());
-    db.add_packages(Vec::from_fn(10, |n| Package::new("beta", n)).as_slice());
+    db.add_packages(Vec::from_fn(5, |n| { 
+        Package::new("alpha", n, Available)
+    }).as_slice());
+    db.add_packages(Vec::from_fn(10, |n| {
+        Package::new("beta", n, Available)
+    }).as_slice());
 
-    let data = Vec::from_fn(4, |n| Package::new("beta", n + 6));
+    let data = Vec::from_fn(4, |n| Package::new_available("beta", n + 6));
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
     let actual = db.select("beta", Gte(6));
 
