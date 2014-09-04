@@ -1,5 +1,3 @@
-use std::collections::{TreeMap};
-use std::vec;
 use std::fmt;
 
 #[deriving(Clone)]
@@ -245,6 +243,8 @@ impl Package {
     }
 
     pub fn name<'a>(&'a self) -> &'a str { self.name.as_slice() }
+
+    pub fn ordinal(&self) -> uint { self.ordinal }
 }
 
 impl PartialEq for Package {
