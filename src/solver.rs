@@ -161,20 +161,6 @@ impl<'a> Solver<'a> {
         Ok(Rule(vec![va, vb]))
     }
 
-    /**
-     * Generates a list of conflicts
-     */
-    fn make_conflicts_clauses(&self, pkg: &pkg::Package, exp: &pkg::PkgExp) -> SolverResult<Vec<Rule>> {
-        let pkgvar = try!(self.pkg_var(pkg));
-        let mut result = Vec::new();
-
-        for conflict in self.pkgdb.select_exp(exp).iter() {
-            let conflict_var = try!(self.pkg_var(*conflict));
-            result.push( Rule(vec![Not(pkgvar), Not(conflict_var)]) ) 
-        }
-        Ok(result)
-    }
-
     fn pkg_vars(&self, name: &str, exp: pkg::VersionExpression) -> SolverResult<Vec<uint>> {
         let mut pkgs : Vec<uint> = vec![];
         for pkg in self.pkgdb.select(name, exp).iter() {
@@ -182,34 +168,6 @@ impl<'a> Solver<'a> {
             pkgs.push(pkgvar);
         }
         Ok(pkgs)
-    }
-
-    /**
-     * Constructs a set of rules that say only one package with the supplied 
-     * name may be installed. For example, should you have a repo with packages 
-     * A1, A2 & A3, then this function should return the ruleset of 
-     *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
-     */
-    fn make_unique_install_clauses(&self, name: &str) -> SolverResult<Vec<Rule>> {
-        let mut result = vec![];
-        let mut visited = BitvSet::new();
-        let pkgs = try!(self.pkg_vars(name, Any));
-
-        for a in pkgs.iter() {
-            for b in pkgs.iter() {
-                if *a == *b { 
-                    continue;
-                }
-
-                if visited.contains(b) { 
-                    continue;
-                }
-
-                result.push( Rule(vec![Not(*a), Not(*b)]) );
-            }
-            visited.insert(*a);
-        }
-        Ok(result)
     }
 
     fn apply_system_rules(&mut self) {
@@ -242,6 +200,113 @@ impl<'a> fmt::Show for Solver<'a> {
         }
         writeln!(f, "")
     }    
+}
+
+/**
+ * Constructs a set of rules that say only one package with the supplied 
+ * name may be installed. For example, should you have a repo with packages 
+ * A1, A2 & A3, then this function should return the ruleset of 
+ *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
+ */
+fn make_unique_install_clauses(s: &Solver, name: &str) -> SolverResult<Vec<Rule>> {
+    let mut result = vec![];
+    let mut visited = BitvSet::new();
+    let pkgs = try!(s.pkg_vars(name, Any));
+
+    for a in pkgs.iter() {
+        for b in pkgs.iter() {
+            if *a == *b { 
+                continue;
+            }
+
+            if visited.contains(b) { 
+                continue;
+            }
+
+            result.push( Rule(vec![Not(*a), Not(*b)]) );
+        }
+        visited.insert(*a);
+    }
+    Ok(result)
+}
+
+#[test]
+fn unique_package_install_rules_are_created_correctly() {
+    // asserts that the rules stating that only one version of a package may be
+    // installed are created as we expect (i.e., if packages A1, A2 and A3
+    // exist, then we want to have rules like (~A1 | ~A2) & (~A2 | ~A3) & (~A1 | ~A3)
+
+    let db = &mk_test_db();
+    let s = Solver::new(db);
+    let actual = make_unique_install_clauses(&s, "alpha").unwrap();
+    let pkgs = db.select("alpha", Any);
+
+    for a in pkgs.iter() {
+        for b in pkgs.iter() {
+            if a != b {
+                // assert that we can find a clause that says (~a | ~b) or 
+                // (~b | ~a)
+                assert!( actual.iter().find(|r| {
+                    let fwd = s.make_conflict_rule(*a, *b).unwrap();
+                    let rev = s.make_conflict_rule(*b, *a).unwrap();
+
+                    (*r).eq(&fwd) || (*r).eq(&rev)
+                }).is_some())
+            }
+        }
+    }
+
+    // assert that there are the number of clauses that we would expect
+    let n = (pkgs.len()-1) * pkgs.len() / 2;
+    assert!(actual.len() == n);
+}
+
+/**
+ * Generates a list of conflicts
+ */
+fn make_conflicts_clauses(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> SolverResult<Vec<Rule>> {
+    let pkgvar = try!(s.pkg_var(pkg));
+    let mut result = Vec::new();
+
+    for conflict in s.pkgdb.select_exp(exp).iter() {
+        let conflict_var = try!(s.pkg_var(*conflict));
+        result.push( Rule(vec![Not(pkgvar), Not(conflict_var)]) ) 
+    }
+    Ok(result)
+}
+
+#[test]
+fn package_conflict_rules_are_generated_correctly() {
+    let db = &mk_test_db();
+
+    // find the package that we want to test
+    let pkg = match db.select("gamma", Eq(5)).as_slice() {
+        [p] => p,
+        _ => {
+            assert!(false, "Expected exactly one package returned from select");
+            return
+        }
+    };
+
+    let s = Solver::new(db);
+    let pkgvar = s.pkg_var(pkg).unwrap();
+    let expected : Vec<Rule> = db.select("alpha", Lte(2))
+                                 .iter()
+                                 .map(|p| { 
+                                    Rule( vec![Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )
+                                 })
+                                 .collect();
+
+    match make_conflicts_clauses(&s, pkg, &pkg.conflicts()[0]) {
+        Ok (actual) => {
+            println!("actual: {}", actual);
+            println!("expected: {}", expected);
+            assert!(actual == expected);
+        },
+        Err (reason) => {
+            assert!(false, "Failed with {}", reason)
+        }
+    }
 }
 
 /**
@@ -382,69 +447,4 @@ fn mk_test_db() -> pkg::PkgDb {
 
 
     return db
-}
-
-#[test]
-fn package_conflict_rules_are_generated_correctly() {
-    let db = &mk_test_db();
-
-    // find the package that we want to test
-    let pkg = match db.select("gamma", Eq(5)).as_slice() {
-        [p] => p,
-        _ => {
-            assert!(false, "Expected exactly one package returned from select");
-            return
-        }
-    };
-
-    let s = Solver::new(db);
-    let pkgvar = s.pkg_var(pkg).unwrap();
-    let expected : Vec<Rule> = db.select("alpha", Lte(2))
-                                 .iter()
-                                 .map(|p| { 
-                                    Rule( vec![Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )
-                                 })
-                                 .collect();
-
-    match s.make_conflicts_clauses(pkg, &pkg.conflicts()[0]) {
-        Ok (actual) => {
-            println!("actual: {}", actual);
-            println!("expected: {}", expected);
-            assert!(actual == expected);
-        },
-        Err (reason) => {
-            assert!(false, "Failed with {}", reason)
-        }
-    }
-}
-
-#[test]
-fn unique_package_install_rules_are_created_correctly() {
-    // asserts that the rules stating that only one version of a package may be
-    // installed are created as we expect (i.e., if packages A1, A2 and A3
-    // exist, then we want to have rules like (~A1 | ~A2) & (~A2 | ~A3) & (~A1 | ~A3)
-
-    let db = &mk_test_db();
-    let s = Solver::new(db);
-    let actual = s.make_unique_install_clauses("alpha").unwrap();
-    let pkgs = db.select("alpha", Any);
-
-    for a in pkgs.iter() {
-        for b in pkgs.iter() {
-            if a != b {
-                // assert that we can find a clause that says (~a | ~b) or 
-                // (~b | ~a)
-                assert!( actual.iter().find(|r| {
-                    let fwd = s.make_conflict_rule(*a, *b).unwrap();
-                    let rev = s.make_conflict_rule(*b, *a).unwrap();
-
-                    (*r).eq(&fwd) || (*r).eq(&rev)
-                }).is_some())
-            }
-        }
-    }
-
-    // assert that there are the number of clauses that we would expect
-    let n = (pkgs.len()-1) * pkgs.len() / 2;
-    assert!(actual.len() == n);
 }
