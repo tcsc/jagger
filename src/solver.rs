@@ -1,5 +1,7 @@
 use std::collections::{TreeMap, BitvSet};
 use std::fmt;
+use std::rc::Rc;
+use std::slice;
 
 use pkg;
 use pkg::{Package, Gte, Lt, Lte, Eq, Any};
@@ -28,6 +30,58 @@ impl SolutionValue {
     }
 }
 
+impl BitOr<SolutionValue, SolutionValue> for SolutionValue {
+    fn bitor(&self, rhs: &SolutionValue) -> SolutionValue {
+        if (*self == Unassigned) || (*rhs == Unassigned) {
+            Unassigned
+        }
+        else {
+            if (self.as_bool() | rhs.as_bool()) {
+               True 
+            }
+            else {
+                False
+            }
+        }
+    }
+}
+
+#[test]
+fn unassigned_solution_value_propagates_through_or() {
+    assert!((Unassigned | True) == Unassigned);
+    assert!((Unassigned | False) == Unassigned);
+    assert!((True | Unassigned) == Unassigned);
+    assert!((False | Unassigned) == Unassigned);
+}
+
+#[test]
+fn oring_assigned_solution_values_behaves_like_boolean() {
+    assert!((True | True) == True);
+    assert!((True | False) == True);
+    assert!((False | True) == True);
+    assert!((False | False) == False);
+}
+
+impl Not<SolutionValue> for SolutionValue {
+    fn not(&self) -> SolutionValue {
+        match *self {
+            Unassigned => Unassigned,
+            True => False,
+            False => True
+        }
+    }
+}
+
+#[test]
+fn not_unassigned_solution_value_is_unassigned() {
+    assert!(!Unassigned == Unassigned)
+}
+
+#[test]
+fn not_assigned_solution_behaves_like_boolean() {
+    assert!(!True == False);
+    assert!(!False == True);
+}
 
 /**
  * A variable-to-value mapping.
@@ -40,6 +94,17 @@ impl Solution {
      * Creates an empty solution
      */
     fn new() -> Solution { Solution(TreeMap::new()) }
+
+    /**
+     * Creates a solution from predefined values encoded as a (variable, value) pair
+     */
+    fn from(values: &[(uint, SolutionValue)]) -> Solution {
+        let mut s = Solution::new();
+        for &(var, val) in values.iter() {
+            s.set(var, val)
+        }
+        s
+    }
 
     /**
      * Sets a value in the solution
@@ -68,10 +133,27 @@ impl Solution {
 //
 // ----------------------------------------------------------------------------
 
-enum Literal { Lit(uint), Not(uint) }
+#[deriving(Clone)]
+enum Term { Lit(uint), Not(uint) }
 
-impl PartialEq for Literal {
-    fn eq(&self, other: &Literal) -> bool {
+impl Term {
+    fn var(&self) -> uint {
+        match *self {
+            Lit(v) => v,
+            Not(v) => v
+        }
+    }
+
+    fn value(&self, s: &Solution) -> SolutionValue {
+        match s.get(self.var()) {
+            Unassigned => Unassigned,
+            val => match *self { Lit (_) => val, Not (_) => !val }
+        } 
+    }
+}
+
+impl PartialEq for Term {
+    fn eq(&self, other: &Term) -> bool {
         match *self {
             Lit(x) => match *other { Lit(y) => x == y, _ => false },
             Not(x) => match *other { Not(y) => x == y, _ => false }
@@ -79,9 +161,9 @@ impl PartialEq for Literal {
     }
 }
 
-impl Eq for Literal {}
+impl Eq for Term {}
 
-impl fmt::Show for Literal {
+impl fmt::Show for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Lit(x) => write!(f, "{}", x),
@@ -94,7 +176,33 @@ impl fmt::Show for Literal {
 //
 // ----------------------------------------------------------------------------
 
-struct Rule(Vec<Literal>); 
+struct Rule(Vec<Term>); 
+
+#[deriving(Clone)]
+impl Rule {
+    fn from(terms: &[Term]) -> Rule {
+        let mut r = Rule(vec![]);
+        for t in terms.iter() {
+            r.add(*t)
+        };
+        r
+    }
+
+    fn add(&mut self, t: Term) {
+        let Rule(ref mut r) = *self;
+        r.push(t.clone())
+    }
+
+    fn terms<'a>(&'a self) -> slice::Items<'a, Term> {
+        let Rule(ref r) = *self;
+        r.iter()   
+    }
+
+    fn len(&self) -> uint {
+        let Rule(ref r) = *self;
+        r.len()
+    }
+}
 
 impl PartialEq for Rule {
     fn eq(&self, other: &Rule) -> bool {
@@ -109,6 +217,59 @@ impl fmt::Show for Rule {
         let Rule(ref terms) = *self;
         terms.fmt(f)
     }
+}
+
+// ----------------------------------------------------------------------------
+//
+// ----------------------------------------------------------------------------
+
+/**
+ * An expression consisting of multiple rules that are ANDed together. The 
+ * clauses are reference counted so that they can appear in multiple iterations
+ * of the expression as it gets progressively simplified during solving. 
+ */
+ #[deriving(Show)]
+struct Expression(Vec<Rc<Rule>>);
+
+impl Expression {
+    fn new() -> Expression { Expression(vec![]) }
+
+    fn from(rules: &[&[Term]]) -> Expression {
+        let mut e = Expression::new();
+        for r in rules.iter() {
+            e.add( Rule::from(*r) );
+        }
+        e
+    }
+
+    fn iter<'a>(&'a self) -> slice::Items<'a, Rc<Rule>> //-> Items<Rc<Rule>> 
+    {
+        let Expression(ref v) = *self;
+        v.iter()
+    }
+
+    fn len(&self) -> uint {
+        let Expression(ref v) = *self;
+        v.len()
+    }
+
+    fn add(&mut self, rule: Rule) {
+        let Expression(ref mut v) = *self;
+        v.push(Rc::new(rule));
+    }
+
+    fn add_ref(&mut self, rule: &Rc<Rule>) {
+        let Expression(ref mut v) = *self;
+        v.push(rule.clone())
+    }
+}
+
+impl PartialEq for Expression {
+    fn eq(&self, other: &Expression) -> bool {
+        let Expression(ref me) = *self;
+        let Expression(ref it) = *other;
+        me == it
+    }    
 }
 
 // ----------------------------------------------------------------------------
@@ -412,6 +573,192 @@ fn package_requirement_rules_are_created_correctly() {
         Err (reason) => {
             assert!(false, "Failed with {}", reason)
         }
+    }
+}
+
+#[deriving(Show)]
+enum PropagationResult {
+    EvaluatesToFalse,
+
+    /**
+     * 
+     */
+    Contradiction (uint),
+
+    /**
+     * (new_exp, deduced_values) where
+     *
+     *   new_exp - An abbbreviated version of the input expression, where all
+     *             rules proven to be true have been removed.
+     *
+     *   deduced_values - A dictionary of the values deduced from this 
+     *                    propagation pass.
+     */
+    Success (Expression, Solution)
+}
+
+fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
+    let mut new_exp = Expression::new();
+    let mut deduced_values = Solution::new();
+        
+    for rule in e.iter() {
+        let mut value = False;
+        let mut unassigned_terms = Vec::with_capacity(rule.len());
+
+        // walk each term in the rule and try to evaluate it.
+        for term in rule.terms() {
+            match term.value(sln) {
+                Unassigned => { unassigned_terms.push(term) },
+                v => { value = value | v; }
+            }
+
+            if value == True { break }
+        }
+
+        println!("Value: {}", value);
+        println!("unassigned terms: {}", unassigned_terms); 
+
+
+        // decide what to do based on out evaluation attempt above
+        match value {
+            True => {
+                // At least one term in the rule evaluates to true, meaning 
+                // that the entire rule does. This in turn means that the 
+                // entire rule can be removed from the expression and so reduce
+                // the search space for the next time around. 
+
+                // Watch us explicitly not copy the rule into the output 
+                // expression.
+            },
+
+            False => {
+                match unassigned_terms.len() {
+                    // oh, dear. All variables in the term have values and the
+                    // rule evaluates to false. Bail out and let the caller 
+                    // know that this can't possibly be the right answer.
+                    0 => { return EvaluatesToFalse },
+
+                    // We have a 'unit' rule (i.e. all terms bar one are 
+                    // false). We can infer a value for the remaining value and
+                    // propagate that.
+                    1 => {
+                        let term = *unassigned_terms.get(0);
+                        let var = term.var();
+
+                        // deduce value
+                        let deduced_value = match *term {
+                            Lit (_) => True,
+                            Not (_) => False
+                        };
+
+                        // check for a contradiction
+                        match deduced_values.get(var) {
+                            Unassigned => { deduced_values.set(var, deduced_value) },
+                            x if (x != deduced_value) => { return Contradiction(var) }
+                            _ => { /* value is consistent, all is well */ }
+                        }
+                    },
+
+                    // We have multiple unassigned variables in the rule; not 
+                    // much we can do here except wait for more letters in the 
+                    // crossword.
+                    _ => {}
+                };
+
+                // copy the rule into the output expression
+                new_exp.add_ref(rule);
+            },
+
+            Unassigned => { 
+                fail!("Rule evaluates to unassigned. This should have been expressly forbidden."); 
+            }
+        }
+    }
+
+    Success (new_exp, deduced_values)
+}
+
+#[test]
+fn propagation_eliminates_true_rules() {
+    let exp = Expression::from(&[
+        &[Lit(2), Lit(3), Lit(4)],
+        &[Not(1)],
+        &[Lit(5), Lit(6)],
+        &[Lit(2), Not(6)]
+    ]);
+
+    let sln = Solution::from(&[(1, False), (2, False), (5, True)]);
+    match propagate(&sln, &exp) {
+        Success (new_exp, _) => {
+            let expected = Expression::from(&[
+                &[Lit(2), Lit(3), Lit(4)],
+                &[Lit(2), Not(6)]
+            ]);
+            assert!(new_exp == expected, "Expected {}, got {}", expected, new_exp);
+        },
+        other => {
+            fail!("Unexpected propagation result")
+        }
+    }
+}
+
+#[test]
+fn propagation_deduces_true_value() {
+    let exp = Expression::from(&[&[Lit(1), Lit(2), Lit(3), Lit(4)]]);
+    let sln = Solution::from(&[(1, False), (2, False), (4, False)]);
+    match propagate(&sln, &exp) {
+        Success (new_exp, deduced_values) => {
+            assert!(exp == new_exp, "Expected {}, got {}", exp, new_exp);
+            assert!(deduced_values == Solution::from(&[(3, True)]))
+        },
+        other => {
+            fail!("Unexpected propagation result")
+        }
+    }
+}
+
+#[test]
+fn propagation_deduces_false_value() {
+    let exp = Expression::from(&[&[Lit(1), Lit(2), Not(3), Lit(4)]]);
+    let sln = Solution::from(&[(1, False), (2, False), (4, False)]);
+    match propagate(&sln, &exp) {
+        Success (new_exp, deduced_values) => {
+            assert!(exp == new_exp, "Expected {}, got {}", exp, new_exp);
+            assert!(deduced_values == Solution::from(&[(3, False)]))
+        },
+        other => {
+            fail!("Unexpected propagation result")
+        }
+    }
+}
+
+#[test]
+fn propagation_detects_contradictions() {
+    let exp = Expression::from(&[
+        &[Lit(1), Lit(2), Lit(3)],
+        &[Lit(1), Lit(2), Not(3)],
+    ]);
+
+    let sln = Solution::from(&[(1, False), (2, False)]);
+
+    match propagate(&sln, &exp) {
+        Contradiction (n) => assert!(n == 3, "Expected a contractiction of variable #3"),
+        other => fail!("Unexpected result from propagate(): {}", other)
+    }
+}
+
+#[test]
+fn propagation_detects_evaluation_to_false() {
+    let exp = Expression::from(&[
+        &[Lit(1), Lit(2), Lit(3)],
+        &[Lit(1), Lit(2), Not(4)],
+    ]);
+
+    let sln = Solution::from(&[(1, False), (2, False), (3, False)]);
+
+    match propagate(&sln, &exp) {
+        EvaluatesToFalse => {},
+        other => fail!("Unexpected result from propagate(): {}", other)
     }
 }
 
