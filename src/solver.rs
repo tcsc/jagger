@@ -2,6 +2,7 @@ use std::collections::{TreeMap, BitvSet};
 use std::fmt;
 use std::rc::Rc;
 use std::slice;
+use std::vec;
 
 use pkg;
 use pkg::{Package, Gte, Lt, Lte, Eq, Any};
@@ -180,8 +181,12 @@ struct Rule(Vec<Term>);
 
 #[deriving(Clone)]
 impl Rule {
+    fn new() -> Rule {
+        Rule(vec![])
+    }
+
     fn from(terms: &[Term]) -> Rule {
-        let mut r = Rule(vec![]);
+        let mut r = Rule::new();
         for t in terms.iter() {
             r.add(*t)
         };
@@ -204,6 +209,16 @@ impl Rule {
     }
 }
 
+impl FromIterator<Term> for Rule {
+    fn from_iter<T: Iterator<Term>>(mut terms: T) -> Rule {
+        let mut r = Rule::new();
+        for t in terms {
+            r.add(t.clone())
+        }
+        r
+    }
+}
+
 impl PartialEq for Rule {
     fn eq(&self, other: &Rule) -> bool {
         let Rule(ref me) = *self;
@@ -219,6 +234,8 @@ impl fmt::Show for Rule {
     }
 }
 
+type RuleRef = Rc<Rule>;
+
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
@@ -229,7 +246,7 @@ impl fmt::Show for Rule {
  * of the expression as it gets progressively simplified during solving. 
  */
  #[deriving(Show)]
-struct Expression(Vec<Rc<Rule>>);
+struct Expression(Vec<RuleRef>);
 
 impl Expression {
     fn new() -> Expression { Expression(vec![]) }
@@ -471,6 +488,68 @@ fn package_conflict_rules_are_generated_correctly() {
 }
 
 /**
+ * Generates rules that specify that a version of the installed packages must 
+ * stay installed. Installed packages can be upgraded but not uninstalled.
+ */
+fn make_installed_package_upgrade_rules(s: &Solver) -> SolverResult<Vec<RuleRef>> {
+    let mut result = Vec::new();
+    for pkg in s.pkgdb.installed_packages().iter() {
+        let valid_pkgs = s.pkgdb.select(pkg.name(), Gte(pkg.ordinal()));
+        let mut rule = Rule::new();
+        for p in valid_pkgs.iter() {
+            rule.add(Lit(try!(s.pkg_var(*p))))
+        }
+        result.push(Rc::new(rule));
+    }
+    Ok(result)
+}
+
+#[test]
+fn installed_packages_must_be_installed_or_upgraded() {
+    // asserts that the rules stating that a package's dependencies  
+
+    let db = &mk_test_db();
+    let s = Solver::new(db);
+
+    let mk_test_rule = |name, ord| -> Rule {
+        FromIterator::from_iter(
+            db.select(name, Gte(ord))
+              .iter()
+              .map(|p| s.pkg_var(*p).unwrap())
+              .map(|v| Lit(v)))
+    };
+
+    let find_rule = |a: &Rule, b: &Rule| -> bool {
+        let Rule(ref r1) = *a;
+        let Rule(ref r2) = *b;
+        r1 == r2
+    };
+
+    match make_installed_package_upgrade_rules(&s) {
+        Ok (rules) => {
+            assert!(rules.len() == 2, "Expected 2 rules, got {}", rules.len());
+
+            let r1 = mk_test_rule("alpha", 1);
+            let r2 = mk_test_rule("beta", 4);
+
+            assert!(rules.iter()
+                         .find(|x| find_rule(x.deref(), &r1))
+                         .is_some(), 
+                    "Couldn't find rule {}", r1);
+
+            assert!(rules.iter()
+                         .find(|x| find_rule(x.deref(), &r2))
+                         .is_some(), 
+                    "Couldn't find rule {}", r2);
+
+        },
+        Err (reason) => {
+            fail!("failed with {}", reason)
+        }
+    }
+}
+
+/**
  * Automatically deselects all packages older than any installed packages.
  */
 fn deny_installed_package_downgrades(s: &Solver,sln: &Solution) -> SolverResult<Solution> {
@@ -576,6 +655,25 @@ fn package_requirement_rules_are_created_correctly() {
     }
 }
 
+fn solve(e: &Expression, s: &Solution) {
+    let mut exp = e.clone();
+    let mut sln = s.clone();
+
+    // do assignment
+    loop {
+        match propagate(&sln, exp) {
+            Success (new_exp, deduced_values) => {
+            },
+
+            Contradiction (_) => {
+            },
+
+            EvaluatesToFalse => {
+            }
+        }
+    }
+}
+
 #[deriving(Show)]
 enum PropagationResult {
     EvaluatesToFalse,
@@ -614,10 +712,6 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
 
             if value == True { break }
         }
-
-        println!("Value: {}", value);
-        println!("unassigned terms: {}", unassigned_terms); 
-
 
         // decide what to do based on out evaluation attempt above
         match value {
@@ -764,7 +858,7 @@ fn propagation_detects_evaluation_to_false() {
 
 #[cfg(test)]
 fn mk_test_db() -> pkg::PkgDb {
-    // b0  b1  b2  b3  b4  b5  b6  b7  b8  b9
+    // b0  b1  b2  b3  b4* b5  b6  b7  b8  b9
     //  |   |   |   |   |   |   |   |   |   |
     // >=  >=  >=  >=  >=  >=  >=  >=  >=  >=
     //  |   |   |   |   |   |   |   |   |   |
@@ -772,7 +866,7 @@ fn mk_test_db() -> pkg::PkgDb {
     //  | /     | /     | /     | /     | /
     //  <=      <=      <=      <=      <=
     //  |       |       |       |       |
-    // a0      a1      a2      a3      a4
+    // a0      a1*     a2      a3      a4
 
     let mut db = pkg::PkgDb::new();
     db.add_packages(Vec::from_fn(5, |n| { 
