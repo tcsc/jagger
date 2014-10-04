@@ -340,8 +340,6 @@ fn trailing_revision_separator_reports_error_but_does_not_crash() {
  * version sorting algorithm.
  */
 fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
-    println!("!!!!!");
-
     let mut result = vec![];
     let mut text = s;
     while text.len() > 0 {
