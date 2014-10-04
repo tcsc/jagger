@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::fmt;
 use std::vec;
 use solver;
-use solver::{Rule, RuleRef, Expression, Solution, SolutionValue, True, False, Unassigned, Term, Not, Lit};
+use solver::{Clause, ClauseRef, Expression, Solution, SolutionValue, True, False, Unassigned, Term, Not, Lit};
 
 use pkg;
 use pkg::{Package, Gte, Lt, Lte, Eq, Any};
@@ -51,12 +51,12 @@ impl<'a> Solver<'a> {
 	}
 
     /**
-     * Generates a rule descrbing a mutual exclusion
+     * Generates a Clause descrbing a mutual exclusion
      */
-    fn make_conflict_rule(&self, a: &Package, b: &Package) -> FormulatorResult<Rule> {
+    fn make_conflict_Clause(&self, a: &Package, b: &Package) -> FormulatorResult<Clause> {
         let va = Not(try!(self.pkg_var(a)));
         let vb = Not(try!(self.pkg_var(b)));
-        Ok(Rule(vec![va, vb]))
+        Ok(Clause(vec![va, vb]))
     }
 
     fn pkg_vars(&self, name: &str, exp: pkg::VersionExpression) -> FormulatorResult<Vec<uint>> {
@@ -68,7 +68,7 @@ impl<'a> Solver<'a> {
         Ok(pkgs)
     }
 
-    fn apply_system_rules(&mut self) {
+    fn apply_system_Clauses(&mut self) {
 
     }
 
@@ -101,12 +101,12 @@ impl<'a> fmt::Show for Solver<'a> {
 }
 
 /**
- * Constructs a set of rules that say only one package with the supplied 
+ * Constructs a set of Clauses that say only one package with the supplied 
  * name may be installed. For example, should you have a repo with packages 
- * A1, A2 & A3, then this function should return the ruleset of 
+ * A1, A2 & A3, then this function should return the Clauseset of 
  *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
  */
-fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Rule>> {
+fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Clause>> {
     let mut result = vec![];
     let mut visited = BitvSet::new();
     let pkgs = try!(s.pkg_vars(name, Any));
@@ -121,7 +121,7 @@ fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<R
                 continue;
             }
 
-            result.push( Rule(vec![Not(*a), Not(*b)]) );
+            result.push( Clause(vec![Not(*a), Not(*b)]) );
         }
         visited.insert(*a);
     }
@@ -129,10 +129,10 @@ fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<R
 }
 
 #[test]
-fn unique_package_install_rules_are_created_correctly() {
-    // asserts that the rules stating that only one version of a package may be
+fn unique_package_install_Clauses_are_created_correctly() {
+    // asserts that the Clauses stating that only one version of a package may be
     // installed are created as we expect (i.e., if packages A1, A2 and A3
-    // exist, then we want to have rules like (~A1 | ~A2) & (~A2 | ~A3) & (~A1 | ~A3)
+    // exist, then we want to have Clauses like (~A1 | ~A2) & (~A2 | ~A3) & (~A1 | ~A3)
 
     let db = &mk_test_db();
     let s = Solver::new(db);
@@ -145,8 +145,8 @@ fn unique_package_install_rules_are_created_correctly() {
                 // assert that we can find a clause that says (~a | ~b) or 
                 // (~b | ~a)
                 assert!( actual.iter().find(|r| {
-                    let fwd = s.make_conflict_rule(*a, *b).unwrap();
-                    let rev = s.make_conflict_rule(*b, *a).unwrap();
+                    let fwd = s.make_conflict_Clause(*a, *b).unwrap();
+                    let rev = s.make_conflict_Clause(*b, *a).unwrap();
 
                     (*r).eq(&fwd) || (*r).eq(&rev)
                 }).is_some())
@@ -162,19 +162,19 @@ fn unique_package_install_rules_are_created_correctly() {
 /**
  * Generates a list of conflicts
  */
-fn make_conflicts_clauses(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Vec<Rule>> {
+fn make_conflicts_clauses(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Vec<Clause>> {
     let pkgvar = try!(s.pkg_var(pkg));
     let mut result = Vec::new();
 
     for conflict in s.pkgdb.select_exp(exp).iter() {
         let conflict_var = try!(s.pkg_var(*conflict));
-        result.push( Rule::from([Not(pkgvar), Not(conflict_var)]) ) 
+        result.push( Clause::from([Not(pkgvar), Not(conflict_var)]) ) 
     }
     Ok(result)
 }
 
 #[test]
-fn package_conflict_rules_are_generated_correctly() {
+fn package_conflict_Clauses_are_generated_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
@@ -188,10 +188,10 @@ fn package_conflict_rules_are_generated_correctly() {
 
     let s = Solver::new(db);
     let pkgvar = s.pkg_var(pkg).unwrap();
-    let expected : Vec<Rule> = db.select("alpha", Lte(2))
+    let expected : Vec<Clause> = db.select("alpha", Lte(2))
                                  .iter()
                                  .map(|p| { 
-                                    Rule( vec![Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )
+                                    Clause( vec![Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )
                                  })
                                  .collect();
 
@@ -208,30 +208,30 @@ fn package_conflict_rules_are_generated_correctly() {
 }
 
 /**
- * Generates rules that specify that a version of the installed packages must 
+ * Generates Clauses that specify that a version of the installed packages must 
  * stay installed. Installed packages can be upgraded but not uninstalled.
  */
-fn make_installed_package_upgrade_rules(s: &Solver) -> FormulatorResult<Vec<RuleRef>> {
+fn make_installed_package_upgrade_Clauses(s: &Solver) -> FormulatorResult<Vec<ClauseRef>> {
     let mut result = Vec::new();
     for pkg in s.pkgdb.installed_packages().iter() {
         let valid_pkgs = s.pkgdb.select(pkg.name(), Gte(pkg.ordinal()));
-        let mut rule = Rule::new();
+        let mut clause = Clause::new();
         for p in valid_pkgs.iter() {
-            rule.add(Lit(try!(s.pkg_var(*p))))
+            clause.add(Lit(try!(s.pkg_var(*p))))
         }
-        result.push(Rc::new(rule));
+        result.push(Rc::new(clause));
     }
     Ok(result)
 }
 
 #[test]
 fn installed_packages_must_be_installed_or_upgraded() {
-    // asserts that the rules stating that a package's dependencies  
+    // asserts that the Clauses stating that a package's dependencies  
 
     let db = &mk_test_db();
     let s = Solver::new(db);
 
-    let mk_test_rule = |name, ord| -> Rule {
+    let mk_test_Clause = |name, ord| -> Clause {
         FromIterator::from_iter(
             db.select(name, Gte(ord))
               .iter()
@@ -239,28 +239,28 @@ fn installed_packages_must_be_installed_or_upgraded() {
               .map(|v| Lit(v)))
     };
 
-    let find_rule = |a: &Rule, b: &Rule| -> bool {
-        let Rule(ref r1) = *a;
-        let Rule(ref r2) = *b;
+    let find_Clause = |a: &Clause, b: &Clause| -> bool {
+        let Clause(ref r1) = *a;
+        let Clause(ref r2) = *b;
         r1 == r2
     };
 
-    match make_installed_package_upgrade_rules(&s) {
-        Ok (rules) => {
-            assert!(rules.len() == 2, "Expected 2 rules, got {}", rules.len());
+    match make_installed_package_upgrade_Clauses(&s) {
+        Ok (Clauses) => {
+            assert!(Clauses.len() == 2, "Expected 2 Clauses, got {}", Clauses.len());
 
-            let r1 = mk_test_rule("alpha", 1);
-            let r2 = mk_test_rule("beta", 4);
+            let r1 = mk_test_Clause("alpha", 1);
+            let r2 = mk_test_Clause("beta", 4);
 
-            assert!(rules.iter()
-                         .find(|x| find_rule(x.deref(), &r1))
+            assert!(Clauses.iter()
+                         .find(|x| find_Clause(x.deref(), &r1))
                          .is_some(), 
-                    "Couldn't find rule {}", r1);
+                    "Couldn't find Clause {}", r1);
 
-            assert!(rules.iter()
-                         .find(|x| find_rule(x.deref(), &r2))
+            assert!(Clauses.iter()
+                         .find(|x| find_Clause(x.deref(), &r2))
                          .is_some(), 
-                    "Couldn't find rule {}", r2);
+                    "Couldn't find Clause {}", r2);
 
         },
         Err (reason) => {
@@ -314,19 +314,19 @@ fn installed_package_downgrades_are_disabled() {
 }
 
 /**
- * Generates a rule requiring that at least one of the packages specified 
+ * Generates a Clause requiring that at least one of the packages specified 
  * by the package expression must be installed for the root package is 
  * installed. For example, given package A depends on package B, 
- * versions 2-4, this method will generate a rule like
+ * versions 2-4, this method will generate a Clause like
  *
  *    (~A | B2 | B3 | B4)
  *
- * This rule basically states that either A is not installed, or package A 
+ * This Clause basically states that either A is not installed, or package A 
  * AND any of B2, B3, B4 are installed. We rely on the clauses generated by 
- * the unique install rule to make sure *only one* of them is installed in 
+ * the unique install Clause to make sure *only one* of them is installed in 
  * the end.
  */
-fn make_requires_clause(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Rule> {
+fn make_requires_clause(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Clause> {
     let mut result = Vec::new();
     let pkgvar = try!(s.pkg_var(pkg));
     result.push(Not(pkgvar));
@@ -334,13 +334,13 @@ fn make_requires_clause(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> Fo
         let v = try!(s.pkg_var(*dep));
         result.push(Lit(v))
     }
-    Ok(Rule(result))
+    Ok(Clause(result))
 }
 
 
 #[test]
-fn package_requirement_rules_are_created_correctly() {
-    // asserts that the rules stating that a package's dependencies  
+fn package_requirement_Clauses_are_created_correctly() {
+    // asserts that the Clauses stating that a package's dependencies  
     let db = &mk_test_db();
 
     // find the package that we want to test
@@ -367,7 +367,7 @@ fn package_requirement_rules_are_created_correctly() {
         Ok (actual) => {
             println!("actual: {}", actual);
             println!("expected: {}", expected);
-            assert!(actual == Rule(expected));
+            assert!(actual == Clause(expected));
         },
         Err (reason) => {
             assert!(false, "Failed with {}", reason)

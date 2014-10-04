@@ -307,14 +307,14 @@ impl Expression {
         v.len()
     }
 
-    fn add(&mut self, Clause: Clause) {
+    fn add(&mut self, clause: Clause) {
         let Expression(ref mut v) = *self;
-        v.push(Rc::new(Clause));
+        v.push(Rc::new(clause));
     }
 
-    fn add_ref(&mut self, Clause: &Rc<Clause>) {
+    fn add_ref(&mut self, clause: &Rc<Clause>) {
         let Expression(ref mut v) = *self;
-        v.push(Clause.clone())
+        v.push(clause.clone())
     }
 }
 
@@ -496,6 +496,10 @@ fn trying_invalid_assignment_on_new_var_fails() {
     let mut sln = Solution::new();
     assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
     assert!(stack.len() == 1);
+
+    assert!(stack.get(0).value == False);
+    assert!(stack.get(0).var == 1);
+    assert!(stack.get(0).implications.is_empty());
 }
 
 /**
@@ -574,12 +578,12 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
     println!("Input expression: {}", e);
     println!("Input solution: {}", sln);
     
-    for Clause in e.iter() {
+    for clause in e.iter() {
         let mut value = False;
-        let mut unassigned_terms = Vec::with_capacity(Clause.len());
+        let mut unassigned_terms = Vec::with_capacity(clause.len());
 
         // walk each term in the Clause and try to evaluate it.
-        for term in Clause.terms() {
+        for term in clause.terms() {
             match term.value(sln) {
                 Unassigned => { unassigned_terms.push(term) },
                 v => { value = value | v; }
@@ -598,7 +602,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
 
                 // Watch us explicitly not copy the Clause into the output 
                 // expression.
-                println!("Eliminiating clause {}", Clause);
+                println!("Eliminiating clause {}", clause);
             },
 
             False => {
@@ -612,7 +616,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                     // false). We can infer a value for the remaining value and
                     // propagate that.
                     1 => {
-                        println!("Examining unit Clause: {}", Clause);
+                        println!("Examining unit Clause: {}", clause);
 
                         let term = *unassigned_terms.get(0);
                         let var = term.var();
@@ -640,7 +644,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                         // watch us once again not copy the input clause to the
                         // output expression, as we now know that the clause 
                         // evaluates to true.
-                        println!("Eliminiating clause {} (was unit)", Clause);
+                        println!("Eliminiating clause {} (was unit)", clause);
                     },
 
                     // We have multiple unassigned variables in the Clause; not 
@@ -648,7 +652,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                     // crossword.
                     _ => {
                         // copy the Clause into the output expression
-                        new_exp.add_ref(Clause);
+                        new_exp.add_ref(clause);
                     }
                 };
             },
