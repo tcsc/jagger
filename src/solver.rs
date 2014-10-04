@@ -208,16 +208,16 @@ impl fmt::Show for Term {
 //
 // ----------------------------------------------------------------------------
 
-pub struct Rule(pub Vec<Term>); 
+pub struct Clause(pub Vec<Term>); 
 
 #[deriving(Clone)]
-impl Rule {
-    pub fn new() -> Rule {
-        Rule(vec![])
+impl Clause {
+    pub fn new() -> Clause {
+        Clause(vec![])
     }
 
-    pub fn from(terms: &[Term]) -> Rule {
-        let mut r = Rule::new();
+    pub fn from(terms: &[Term]) -> Clause {
+        let mut r = Clause::new();
         for t in terms.iter() {
             r.add(*t)
         };
@@ -225,24 +225,24 @@ impl Rule {
     }
 
     pub fn add(&mut self, t: Term) {
-        let Rule(ref mut r) = *self;
+        let Clause(ref mut r) = *self;
         r.push(t.clone())
     }
 
     pub fn terms<'a>(&'a self) -> slice::Items<'a, Term> {
-        let Rule(ref r) = *self;
+        let Clause(ref r) = *self;
         r.iter()   
     }
 
     pub fn len(&self) -> uint {
-        let Rule(ref r) = *self;
+        let Clause(ref r) = *self;
         r.len()
     }
 }
 
-impl FromIterator<Term> for Rule {
-    fn from_iter<T: Iterator<Term>>(mut terms: T) -> Rule {
-        let mut r = Rule::new();
+impl FromIterator<Term> for Clause {
+    fn from_iter<T: Iterator<Term>>(mut terms: T) -> Clause {
+        let mut r = Clause::new();
         for t in terms {
             r.add(t.clone())
         }
@@ -250,17 +250,17 @@ impl FromIterator<Term> for Rule {
     }
 }
 
-impl PartialEq for Rule {
-    fn eq(&self, other: &Rule) -> bool {
-        let Rule(ref me) = *self;
-        let Rule(ref it) = *other;
+impl PartialEq for Clause {
+    fn eq(&self, other: &Clause) -> bool {
+        let Clause(ref me) = *self;
+        let Clause(ref it) = *other;
         me == it
     }
 }
 
-impl fmt::Show for Rule {
+impl fmt::Show for Clause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Rule(ref terms) = *self;
+        let Clause(ref terms) = *self;
         let mut first = true;
         write!(f, "(");
         for ref t in terms.iter() {
@@ -271,32 +271,32 @@ impl fmt::Show for Rule {
     }
 }
 
-pub type RuleRef = Rc<Rule>;
+pub type ClauseRef = Rc<Clause>;
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
 /**
- * An expression consisting of multiple rules that are ANDed together. The 
+ * An expression consisting of multiple Clauses that are ANDed together. The 
  * clauses are reference counted so that they can appear in multiple iterations
  * of the expression as it gets progressively simplified during solving. 
  */
  #[deriving(Clone)]
-pub struct Expression(Vec<RuleRef>);
+pub struct Expression(Vec<ClauseRef>);
 
 impl Expression {
     fn new() -> Expression { Expression(vec![]) }
 
-    fn from(rules: &[&[Term]]) -> Expression {
+    fn from(Clauses: &[&[Term]]) -> Expression {
         let mut e = Expression::new();
-        for r in rules.iter() {
-            e.add( Rule::from(*r) );
+        for r in Clauses.iter() {
+            e.add( Clause::from(*r) );
         }
         e
     }
 
-    fn iter<'a>(&'a self) -> slice::Items<'a, Rc<Rule>> //-> Items<Rc<Rule>> 
+    fn iter<'a>(&'a self) -> slice::Items<'a, Rc<Clause>> //-> Items<Rc<Clause>> 
     {
         let Expression(ref v) = *self;
         v.iter()
@@ -307,14 +307,14 @@ impl Expression {
         v.len()
     }
 
-    fn add(&mut self, rule: Rule) {
+    fn add(&mut self, Clause: Clause) {
         let Expression(ref mut v) = *self;
-        v.push(Rc::new(rule));
+        v.push(Rc::new(Clause));
     }
 
-    fn add_ref(&mut self, rule: &Rc<Rule>) {
+    fn add_ref(&mut self, Clause: &Rc<Clause>) {
         let Expression(ref mut v) = *self;
-        v.push(rule.clone())
+        v.push(Clause.clone())
     }
 }
 
@@ -328,10 +328,10 @@ impl PartialEq for Expression {
 
 impl fmt::Show for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Expression(ref rules) = *self;
+        let Expression(ref Clauses) = *self;
         let mut first = true;
         write!(f, "[");
-        for ref r in rules.iter() {
+        for ref r in Clauses.iter() {
             if !first { write!(f, " & " ); } else { first = false; }
             r.fmt(f);
         }
@@ -559,7 +559,7 @@ enum PropagationResult {
      * (new_exp, implications) where
      *
      *   new_exp - An abbbreviated version of the input expression, where all
-     *             rules proven to be true have been removed.
+     *             Clauses proven to be true have been removed.
      *
      *   implications - A dictionary of the values deduced from this 
      *                  propagation pass.
@@ -574,12 +574,12 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
     println!("Input expression: {}", e);
     println!("Input solution: {}", sln);
     
-    for rule in e.iter() {
+    for Clause in e.iter() {
         let mut value = False;
-        let mut unassigned_terms = Vec::with_capacity(rule.len());
+        let mut unassigned_terms = Vec::with_capacity(Clause.len());
 
-        // walk each term in the rule and try to evaluate it.
-        for term in rule.terms() {
+        // walk each term in the Clause and try to evaluate it.
+        for term in Clause.terms() {
             match term.value(sln) {
                 Unassigned => { unassigned_terms.push(term) },
                 v => { value = value | v; }
@@ -591,28 +591,28 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
         // decide what to do based on out evaluation attempt above
         match value {
             True => {
-                // At least one term in the rule evaluates to true, meaning 
-                // that the entire rule does. This in turn means that the 
-                // entire rule can be removed from the expression and so reduce
+                // At least one term in the Clause evaluates to true, meaning 
+                // that the entire Clause does. This in turn means that the 
+                // entire Clause can be removed from the expression and so reduce
                 // the search space for the next time around. 
 
-                // Watch us explicitly not copy the rule into the output 
+                // Watch us explicitly not copy the Clause into the output 
                 // expression.
-                println!("Eliminiating clause {}", rule);
+                println!("Eliminiating clause {}", Clause);
             },
 
             False => {
                 match unassigned_terms.len() {
                     // oh, dear. All variables in the term have values and the
-                    // rule evaluates to false. Bail out and let the caller 
+                    // Clause evaluates to false. Bail out and let the caller 
                     // know that this can't possibly be the right answer.
                     0 => { return EvaluatesToFalse },
 
-                    // We have a 'unit' rule (i.e. all terms bar one are 
+                    // We have a 'unit' Clause (i.e. all terms bar one are 
                     // false). We can infer a value for the remaining value and
                     // propagate that.
                     1 => {
-                        println!("Examining unit rule: {}", rule);
+                        println!("Examining unit Clause: {}", Clause);
 
                         let term = *unassigned_terms.get(0);
                         let var = term.var();
@@ -640,21 +640,21 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                         // watch us once again not copy the input clause to the
                         // output expression, as we now know that the clause 
                         // evaluates to true.
-                        println!("Eliminiating clause {} (was unit)", rule);
+                        println!("Eliminiating clause {} (was unit)", Clause);
                     },
 
-                    // We have multiple unassigned variables in the rule; not 
+                    // We have multiple unassigned variables in the Clause; not 
                     // much we can do here except wait for more letters in the 
                     // crossword.
                     _ => {
-                        // copy the rule into the output expression
-                        new_exp.add_ref(rule);
+                        // copy the Clause into the output expression
+                        new_exp.add_ref(Clause);
                     }
                 };
             },
 
             Unassigned => { 
-                fail!("Rule evaluates to unassigned. This should have been expressly forbidden."); 
+                fail!("Clause evaluates to unassigned. This should have been expressly forbidden."); 
             }
         }
     }
@@ -663,7 +663,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
 }
 
 #[test]
-fn propagation_eliminates_true_rules() {
+fn propagation_eliminates_true_Clauses() {
     let exp = Expression::from(&[
         &[Lit(2), Lit(3), Lit(4)],
         &[Not(1)],
