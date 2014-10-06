@@ -2,9 +2,7 @@ use std::collections::{TreeMap, BitvSet};
 
 use std::rc::Rc;
 use std::fmt;
-use std::vec;
-use solver;
-use solver::{Clause, ClauseRef, Expression, Solution, SolutionValue, True, False, Unassigned, Term, Not, Lit};
+use solver::{Clause, ClauseRef, Solution, False, Unassigned, Not, Lit};
 
 use pkg;
 use pkg::{Package, Gte, Lt, Lte, Eq, Any};
@@ -53,7 +51,7 @@ impl<'a> Solver<'a> {
     /**
      * Generates a Clause descrbing a mutual exclusion
      */
-    fn make_conflict_Clause(&self, a: &Package, b: &Package) -> FormulatorResult<Clause> {
+    fn make_conflict_clause(&self, a: &Package, b: &Package) -> FormulatorResult<Clause> {
         let va = Not(try!(self.pkg_var(a)));
         let vb = Not(try!(self.pkg_var(b)));
         Ok(Clause(vec![va, vb]))
@@ -68,7 +66,7 @@ impl<'a> Solver<'a> {
         Ok(pkgs)
     }
 
-    fn apply_system_Clauses(&mut self) {
+    fn apply_system_clauses(&mut self) {
 
     }
 
@@ -103,7 +101,7 @@ impl<'a> fmt::Show for Solver<'a> {
 /**
  * Constructs a set of Clauses that say only one package with the supplied 
  * name may be installed. For example, should you have a repo with packages 
- * A1, A2 & A3, then this function should return the Clauseset of 
+ * A1, A2 & A3, then this function should return the set of 
  *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
  */
 fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Clause>> {
@@ -129,7 +127,7 @@ fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<C
 }
 
 #[test]
-fn unique_package_install_Clauses_are_created_correctly() {
+fn unique_package_install_clauses_are_created_correctly() {
     // asserts that the Clauses stating that only one version of a package may be
     // installed are created as we expect (i.e., if packages A1, A2 and A3
     // exist, then we want to have Clauses like (~A1 | ~A2) & (~A2 | ~A3) & (~A1 | ~A3)
@@ -145,8 +143,8 @@ fn unique_package_install_Clauses_are_created_correctly() {
                 // assert that we can find a clause that says (~a | ~b) or 
                 // (~b | ~a)
                 assert!( actual.iter().find(|r| {
-                    let fwd = s.make_conflict_Clause(*a, *b).unwrap();
-                    let rev = s.make_conflict_Clause(*b, *a).unwrap();
+                    let fwd = s.make_conflict_clause(*a, *b).unwrap();
+                    let rev = s.make_conflict_clause(*b, *a).unwrap();
 
                     (*r).eq(&fwd) || (*r).eq(&rev)
                 }).is_some())
@@ -174,7 +172,7 @@ fn make_conflicts_clauses(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> 
 }
 
 #[test]
-fn package_conflict_Clauses_are_generated_correctly() {
+fn package_conflict_clauses_are_generated_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
@@ -197,9 +195,7 @@ fn package_conflict_Clauses_are_generated_correctly() {
 
     match make_conflicts_clauses(&s, pkg, &pkg.conflicts()[0]) {
         Ok (actual) => {
-            println!("actual: {}", actual);
-            println!("expected: {}", expected);
-            assert!(actual == expected);
+            assert!(actual == expected, "expected {}, got {}", expected, actual);
         },
         Err (reason) => {
             assert!(false, "Failed with {}", reason)
@@ -211,7 +207,7 @@ fn package_conflict_Clauses_are_generated_correctly() {
  * Generates Clauses that specify that a version of the installed packages must 
  * stay installed. Installed packages can be upgraded but not uninstalled.
  */
-fn make_installed_package_upgrade_Clauses(s: &Solver) -> FormulatorResult<Vec<ClauseRef>> {
+fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<ClauseRef>> {
     let mut result = Vec::new();
     for pkg in s.pkgdb.installed_packages().iter() {
         let valid_pkgs = s.pkgdb.select(pkg.name(), Gte(pkg.ordinal()));
@@ -245,19 +241,19 @@ fn installed_packages_must_be_installed_or_upgraded() {
         r1 == r2
     };
 
-    match make_installed_package_upgrade_Clauses(&s) {
-        Ok (Clauses) => {
-            assert!(Clauses.len() == 2, "Expected 2 Clauses, got {}", Clauses.len());
+    match make_installed_package_upgrade_clauses(&s) {
+        Ok (clauses) => {
+            assert!(clauses.len() == 2, "Expected 2 Clauses, got {}", clauses.len());
 
             let r1 = mk_test_Clause("alpha", 1);
             let r2 = mk_test_Clause("beta", 4);
 
-            assert!(Clauses.iter()
+            assert!(clauses.iter()
                          .find(|x| find_Clause(x.deref(), &r1))
                          .is_some(), 
                     "Couldn't find Clause {}", r1);
 
-            assert!(Clauses.iter()
+            assert!(clauses.iter()
                          .find(|x| find_Clause(x.deref(), &r2))
                          .is_some(), 
                     "Couldn't find Clause {}", r2);
@@ -292,8 +288,8 @@ fn installed_package_downgrades_are_disabled() {
     let solver = Solver::new(db);
     let sln = deny_installed_package_downgrades(&solver, &Solution::new()).unwrap();
 
-    println!("Pkgs: {}", solver.pkgvars);
-    println!("Soln: {}", sln);
+    debug!("Pkgs: {}", solver.pkgvars);
+    debug!("Soln: {}", sln);
 
     for pkg in db.installed_packages().iter() {
         let pvar = solver.pkg_var(*pkg).unwrap();
@@ -339,8 +335,8 @@ fn make_requires_clause(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> Fo
 
 
 #[test]
-fn package_requirement_Clauses_are_created_correctly() {
-    // asserts that the Clauses stating that a package's dependencies  
+fn package_requirement_clauses_are_created_correctly() {
+    // asserts that the clauses stating that a package's dependencies  
     let db = &mk_test_db();
 
     // find the package that we want to test
@@ -365,9 +361,8 @@ fn package_requirement_Clauses_are_created_correctly() {
 
     match make_requires_clause(&s, pkg, &pkg.requires()[0]) {
         Ok (actual) => {
-            println!("actual: {}", actual);
-            println!("expected: {}", expected);
-            assert!(actual == Clause(expected));
+            let e = Clause(expected);
+            assert!(actual == e, "Expected: {}, got {}", e, actual);
         },
         Err (reason) => {
             assert!(false, "Failed with {}", reason)

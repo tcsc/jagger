@@ -1,9 +1,8 @@
-use std::collections::{TreeMap, BitvSet, TrieSet};
+use std::collections::{TreeMap, TrieSet};
 use std::collections::treemap::{Entries};
 use std::fmt;
 use std::rc::Rc;
 use std::slice;
-use std::vec;
 
 // ----------------------------------------------------------------------------
 //
@@ -40,7 +39,7 @@ impl BitOr<SolutionValue, SolutionValue> for SolutionValue {
             Unassigned
         }
         else {
-            if (self.as_bool() | rhs.as_bool()) {
+            if self.as_bool() | rhs.as_bool() {
                True 
             }
             else {
@@ -152,9 +151,9 @@ impl fmt::Show for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
         let Solution(ref map) = *self;
-        write!(f, "[");
+        try!(write!(f, "["));
         for (k, v) in map.iter() {
-            if first  { first = false; } else { write!(f, ", "); }
+            if first  { first = false; } else { try!(write!(f, ", ")); }
             try!(write!(f, "{}: {}", k, v));
         }
         write!(f, "]")
@@ -262,10 +261,10 @@ impl fmt::Show for Clause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Clause(ref terms) = *self;
         let mut first = true;
-        write!(f, "(");
+        try!(write!(f, "("));
         for ref t in terms.iter() {
-            if !first { write!(f, " | " ); } else { first =  false; }
-            t.fmt(f);
+            if !first { try!(write!(f, " | " )); } else { first =  false; }
+            try!(t.fmt(f));
         }
         write!(f, ")")
     }
@@ -288,9 +287,9 @@ pub struct Expression(Vec<ClauseRef>);
 impl Expression {
     fn new() -> Expression { Expression(vec![]) }
 
-    fn from(Clauses: &[&[Term]]) -> Expression {
+    fn from(clauses: &[&[Term]]) -> Expression {
         let mut e = Expression::new();
-        for r in Clauses.iter() {
+        for r in clauses.iter() {
             e.add( Clause::from(*r) );
         }
         e
@@ -328,12 +327,12 @@ impl PartialEq for Expression {
 
 impl fmt::Show for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Expression(ref Clauses) = *self;
+        let Expression(ref clauses) = *self;
         let mut first = true;
-        write!(f, "[");
-        for ref r in Clauses.iter() {
-            if !first { write!(f, " & " ); } else { first = false; }
-            r.fmt(f);
+        try!(write!(f, "["));
+        for ref r in clauses.iter() {
+            if !first { try!(write!(f, " & " )); } else { first = false; }
+            try!(r.fmt(f));
         }
         write!(f, "]")
     }
@@ -417,6 +416,8 @@ fn try_assignment(state: SolveState, stack: &mut StateStack, unassigned_vars: &m
     let val = next_val(state.value);
     let exp = state.expression;
 
+    debug!("\tAttempting to set {} = {}", var, val);
+
     sln.set(var, val);
 
     match propagate(sln, &exp) {
@@ -424,8 +425,8 @@ fn try_assignment(state: SolveState, stack: &mut StateStack, unassigned_vars: &m
         Success (new_exp, mut implications) => {
             implications.insert(var, val);
 
-            println!("Original expression: {}", exp);
-            println!("Simplified expression: {}", new_exp);
+            debug!("\tOriginal expression: {}", exp);
+            debug!("\tSimplified expression: {}", new_exp);
 
             // remove all variables that we assigned values to in this pass 
             // from the unassigned variables set.
@@ -439,7 +440,7 @@ fn try_assignment(state: SolveState, stack: &mut StateStack, unassigned_vars: &m
             stack.push( SolveState::new(exp, var, val, implications) );
 
             // Pick a new variable to try for the next pass
-            println!("\tSelecting new var");
+            debug!("\tSelecting new var");
             stack.push( SolveState::new_unassigned(new_exp, pick_var(unassigned_vars)));
 
             true
@@ -448,7 +449,7 @@ fn try_assignment(state: SolveState, stack: &mut StateStack, unassigned_vars: &m
         // Any sort of failure - get set up for the next pass by pushing a copy of our 
         // original state with an updated value to try  
         _ => {
-            println!("Assignment failed. Setting up for retry/backtrack");
+            debug!("Assignment failed. Setting up for retry/backtrack");
             sln.set(var, Unassigned);
             stack.push( SolveState::new(exp, var, val, TreeMap::new()) );
             false
@@ -476,8 +477,10 @@ fn trying_valid_assignment_on_new_var_succeeds() {
     assert!(stack.get(1).value == Unassigned);
     assert!(stack.get(1).var != 5);
     assert!(stack.get(1).implications.is_empty());
+
+    assert!(sln.get(5) == False);
     
-    println!("Stack: {}", stack);
+    debug!("Stack: {}", stack);
 }
 
 #[test]
@@ -500,6 +503,66 @@ fn trying_invalid_assignment_on_new_var_fails() {
     assert!(stack.get(0).value == False);
     assert!(stack.get(0).var == 1);
     assert!(stack.get(0).implications.is_empty());
+
+    assert!(sln.get(1) == Unassigned);
+
+    debug!("Stack: {}", stack);
+}
+
+#[test]
+fn trying_valid_backtracked_assignment_succeeds() {
+    let exp = Expression::from(&[
+        &[Lit(2), Lit(3), Lit(4)],
+        &[Lit(1)],
+        &[Lit(5), Lit(6)],
+        &[Lit(2), Not(6)]
+    ]);
+
+    let mut stack = vec![SolveState::new(exp, 1, False, TreeMap::new())];
+
+    let mut vars = TrieSet::new();
+    for v in [2, 3, 4, 5, 6].iter() {
+        vars.insert(*v);
+    }
+
+    let mut sln = Solution::new();
+    assert!(try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+    assert!(stack.len() == 2);
+
+
+    assert!(stack.get(0).var == 1);
+    assert!(stack.get(0).value == True);
+    assert!(stack.get(0).implications.contains_key(&1));
+
+    assert!(stack.get(1).value == Unassigned);
+    assert!(stack.get(1).var != 5);
+    assert!(stack.get(1).implications.is_empty());
+
+    assert!(sln.get(1) == True);
+
+    debug!("Stack: {}", stack);
+}
+
+#[test]
+fn trying_invalid_backtracked_assignment_fails() {
+    let exp = Expression::from(&[
+        &[Lit(2), Lit(3), Lit(4)],
+        &[Not(1)],
+        &[Lit(5), Lit(6)],
+        &[Lit(2), Not(6)]
+    ]);
+
+    let mut stack = vec![SolveState::new(exp, 1, False, TreeMap::new())];
+
+    let mut vars = TrieSet::new();
+    for v in [2, 3, 4, 5, 6].iter() {
+        vars.insert(*v);
+    }
+
+    let mut sln = Solution::new();
+    assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+
+    debug!("Stack: {}", stack);
 }
 
 /**
@@ -512,9 +575,9 @@ fn solve(e: &Expression, varcount: uint, initial_sln: Solution) -> Option<Soluti
 
     stack.push( SolveState::new_unassigned((*e).clone(), pick_var(&mut unassigned_vars)) );
     while !unassigned_vars.is_empty() {
-        let mut state = stack.pop().unwrap();
+        let state = stack.pop().unwrap();
 
-        println!("+++ Stack depth: {0}", stack.len());
+        //debug!("Stack depth: {}", stack.len());
 
         // undo whatever was done at the time this record was pushed onto the 
         // stack. If this is a new variable then this will be empty. If we are 
@@ -575,8 +638,8 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
     let mut new_exp = Expression::new();
     let mut implications = TreeMap::new();
         
-    println!("Input expression: {}", e);
-    println!("Input solution: {}", sln);
+    debug!("\t\tInput expression: {}", e);
+    debug!("\t\tInput solution: {}", sln);
     
     for clause in e.iter() {
         let mut value = False;
@@ -602,7 +665,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
 
                 // Watch us explicitly not copy the Clause into the output 
                 // expression.
-                println!("Eliminiating clause {}", clause);
+                debug!("\t\tEliminiating clause {}", clause);
             },
 
             False => {
@@ -616,7 +679,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                     // false). We can infer a value for the remaining value and
                     // propagate that.
                     1 => {
-                        println!("Examining unit Clause: {}", clause);
+                        debug!("\t\tExamining unit Clause: {}", clause);
 
                         let term = *unassigned_terms.get(0);
                         let var = term.var();
@@ -627,7 +690,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                             Not (_) => False
                         };
 
-                        println!("Decuced that {} = {}", var, deduced_value);
+                        debug!("\t\tDeduced that {} = {}", var, deduced_value);
 
                         // check for a contradiction
                         if !implications.contains_key(&var) {
@@ -644,7 +707,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
                         // watch us once again not copy the input clause to the
                         // output expression, as we now know that the clause 
                         // evaluates to true.
-                        println!("Eliminiating clause {} (was unit)", clause);
+                        debug!("\t\tEliminiating unit clause {}", clause);
                     },
 
                     // We have multiple unassigned variables in the Clause; not 
@@ -667,7 +730,7 @@ fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
 }
 
 #[test]
-fn propagation_eliminates_true_Clauses() {
+fn propagation_eliminates_true_clauses() {
     let exp = Expression::from(&[
         &[Lit(2), Lit(3), Lit(4)],
         &[Not(1)],
@@ -684,7 +747,7 @@ fn propagation_eliminates_true_Clauses() {
             assert!(new_exp == expected, "Expected {}, got {}", expected, new_exp);
         },
         other => {
-            fail!("Unexpected propagation result")
+            fail!("Unexpected propagation result: {}", other)
         }
     }
 }
@@ -703,7 +766,7 @@ fn propagation_deduces_true_value() {
             assert!(implications == expected_implications)
         },
         other => {
-            fail!("Unexpected propagation result")
+            fail!("Unexpected propagation result: {}", other)
         }
     }
 }
@@ -722,7 +785,7 @@ fn propagation_deduces_false_value() {
             assert!(deduced_values == expected_implications);
         },
         other => {
-            fail!("Unexpected propagation result")
+            fail!("Unexpected propagation result: {}", other)
         }
     }
 }

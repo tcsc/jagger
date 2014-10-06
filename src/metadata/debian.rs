@@ -168,7 +168,6 @@ fn empty_string_is_invalid_architecture() {
 fn too_many_parts_makes_an_architecture_invalid() {
     let text = "mswindows-somevendor-somerubish-i386";
     let arch = parse_arch(text);
-    print!("arch: {}\n", arch);
     assert!(arch == Err(InvalidArchitecture(String::from_str(text))));
 }
 
@@ -303,8 +302,7 @@ fn empty_epoch_is_an_error() {
 fn non_integer_epoch_is_an_error() {
     let expected = Err(VersionError::epoch("narf"));
     let actual = extract_epoch("narf:2:3");
-    println!("Expected: {}, got {}", expected, actual);
-    assert!(expected == actual);
+    assert!(expected == actual, "Expected: {}, got {}", expected, actual);
 }
 
 /**
@@ -323,16 +321,14 @@ fn extract_upstream<'a>(s: &'a str) -> Option<(&'a str, &'a str)> {
 fn no_seperator_in_upstream_version_returns_whole_string() {
     let expected = Some(("a.b.c.d", ""));
     let actual = extract_upstream("a.b.c.d");
-    println!("Expected: {}, got: {}", expected, actual); 
-    assert!(actual == expected);
+    assert!(actual == expected,"Expected: {}, got: {}", expected, actual);
 }
 
 #[test]
 fn trailing_revision_separator_reports_error_but_does_not_crash() {
     let expected = None;
     let actual = extract_upstream("a.b.c.d-");
-    println!("expected: {}, got: {}", expected, actual);
-    assert!(actual == expected);
+    assert!(actual == expected, "expected: {}, got: {}", expected, actual);
 }
 
 /**
@@ -343,21 +339,19 @@ fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
     let mut result = vec![];
     let mut text = s;
     while text.len() > 0 {
-        println!("text: {}", text);
-
         // grab all leading nondigit characters
         let p = text.find(|c:char| c.is_digit()).unwrap_or(text.len());
         let prefix = text.slice_to(p);
         text = text.slice_from(p);
 
-        println!("p: {}, prefix: \"{}\", text: {}", p, prefix, text);
+        debug!("p: {}, prefix: \"{}\", text: {}", p, prefix, text);
 
         // grab all leading digit chars
         let d = text.find(|c:char| !c.is_digit()).unwrap_or(text.len());
         let digits = text.slice_to(d);
         text = text.slice_from(d);
 
-        println!("d: {}, digits: \"{}\", text: {}", d, digits, text);
+        debug!("d: {}, digits: \"{}\", text: {}", d, digits, text);
 
 
         result.push(VersionChunk::new(prefix, from_str(digits).unwrap_or(0)))
@@ -369,8 +363,7 @@ fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
 fn upstream_versions_with_trailing_chars_are_ok() {
     let expected = Ok(vec![VersionChunk::new("alpha.", 1), VersionChunk::new(".bravo", 0)]);
     let actual = parse_upstream("alpha.1.bravo");
-    println!("expected: {}, got {}", expected, actual);
-    assert!(expected == actual);
+    assert!(expected == actual, "expected: {}, got {}", expected, actual);
 }
 
 impl Version {
@@ -475,8 +468,7 @@ fn dotted_decimal_versions_are_valid() {
         revision: String::from_str("5") 
     });
     let actual = Version::parse("1.2.3.4-5");
-    println!("Expected: {}, got: {}", expected, actual);
-    assert!(expected == actual);
+    assert!(expected == actual, "Expected: {}, got: {}", expected, actual);
 }
 
 #[test]
@@ -487,8 +479,7 @@ fn lexical_versions_are_valid() {
         revision: String::from_str("1") 
     });
     let actual = Version::parse("someversion-1");
-    println!("Expected: {}, got: {}", expected, actual);
-    assert!(expected == actual);
+    assert!(expected == actual, "Expected: {}, got: {}", expected, actual);
 }
 
 #[test]

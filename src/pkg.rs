@@ -383,8 +383,6 @@ fn pkgdb_select_returns_expected_packages() {
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
     let actual = db.select("beta", Gte(6));
 
-    println!("expected: {}", expected);
-    println!("actual: {}", actual);
-
-    assert!(expected.as_slice() == actual.as_slice());
+    assert!(expected.as_slice() == actual.as_slice(), 
+            "expected: {}, got: {}", expected, actual);
 }
