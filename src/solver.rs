@@ -88,6 +88,15 @@ fn not_assigned_solution_behaves_like_boolean() {
 
 /**
  * A variable-to-value mapping.
+ * 
+ * This might be made faster & more memory-efficient by implementing it as an array 
+ * rather than a tree, especially given that every variable in the problem will 
+ * definitely  have a value by the end of the solve.
+ *
+ * It could be further compressed by storing the values as two-bit (ie: 
+ * unassigned: 00, true: 01, false: 10) values packed into larger cells. We'd need to
+ * actually benchmark this to see if the memory & cache efficiency is worth the extra 
+ * pack & unpack code.
  */
 #[deriving(PartialEq, Clone)]
 pub struct Solution (TreeMap<Var, bool>);
@@ -280,6 +289,13 @@ pub type ClauseRef = Rc<Clause>;
  * An expression consisting of multiple Clauses that are ANDed together. The 
  * clauses are reference counted so that they can appear in multiple iterations
  * of the expression as it gets progressively simplified during solving. 
+ *
+ * This structure is pretty inefficient, with both reference counting and 
+ * indirection all over the place. A more efficient implemetation might store 
+ * the master expression as a giant array with all the clauses packed together 
+ * and referenced by slices during the actual solve.
+ *
+ * Get some benchmarking in first to see if its worth it, though. 
  */
  #[deriving(Clone)]
 pub struct Expression(Vec<ClauseRef>);
