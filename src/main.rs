@@ -4,6 +4,7 @@
 mod metadata;
 mod pkg;
 mod solver;
+mod dimacs;
 mod formulator;
 
 #[cfg(not(test))]
