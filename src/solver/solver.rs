@@ -1,6 +1,7 @@
 use std::collections::{TreeMap, TrieSet};
 use std::collections::treemap::{Entries};
 use std::fmt;
+use std::ops;
 use std::rc::Rc;
 use std::slice;
 use log;
@@ -66,7 +67,7 @@ fn oring_assigned_solution_values_behaves_like_boolean() {
     assert!((False | False) == False);
 }
 
-impl Not<SolutionValue> for SolutionValue {
+impl ops::Not<SolutionValue> for SolutionValue {
     fn not(&self) -> SolutionValue {
         match *self {
             Unassigned => Unassigned,

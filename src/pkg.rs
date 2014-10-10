@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fmt;
 
 #[deriving(Clone)]
@@ -57,7 +58,9 @@ impl fmt::Show for VersionExpression {
     }
 }
 
-impl Eq for VersionExpression {}
+impl cmp::Eq for VersionExpression {
+
+}
 
 #[test]
 fn version_expression_any()  {
@@ -257,11 +260,14 @@ impl PartialEq for Package {
     }
 }
 
-impl Eq for Package {}
+impl cmp::Eq for Package {}
 
 impl PartialOrd for Package {
-    fn lt(&self, other: &Package) -> bool {
-        (self.name < other.name) || (self.ordinal < other.ordinal)
+    fn partial_cmp(&self, other: &Package) -> Option<Ordering> {
+        match self.name.cmp(&other.name) {
+            Equal => Some(self.ordinal.cmp(&other.ordinal)),
+            rval => Some(rval)
+        }
     }
 }
 

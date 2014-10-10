@@ -22,7 +22,7 @@ pub enum System {
 #[deriving(PartialEq, Show, Clone)]
 pub enum Vendor {
     AnyVendor,
-    Vendor (String)
+    NamedVendor (String)
 }
 
 #[deriving(PartialEq, Show, Clone)]
@@ -108,7 +108,7 @@ fn parse_vendor(a: &str) -> ArchResult<Vendor> {
     match a {
         "any" => Ok(AnyVendor),
         "" => Err(InvalidVendor(String::from_str(a))), // Invalid
-        v => Ok(Vendor(String::from_str(v)))
+        v => Ok(NamedVendor(String::from_str(v)))
     }
 }
 
@@ -137,7 +137,7 @@ fn parse_arch(a: &str) -> ArchResult<Architecture> {
         let parts = part_strings.as_slice();
         match parts.len() {
             1 => parse_alias(parts[0]),
-            n @ 2 .. 3 => {
+            n @ 2 ... 3 => {
                 let system = try!(parse_system(parts[0]));
                 let cpu = try!(parse_cpu(parts[parts.len()-1]));
                 let vendor_name = if n == 2 { "any" } else { parts[1] };
@@ -185,7 +185,7 @@ fn parse_windows_no_vendor() {
 fn parse_windows_with_vendor() {
     let expected = Architecture {
         system: Windows, 
-        vendor: Vendor(String::from_str("somevendor")), 
+        vendor: NamedVendor(String::from_str("somevendor")), 
         cpu: I386
     };
     let result = parse_arch("mswindows-somevendor-i386");
@@ -389,13 +389,13 @@ impl Version {
  * the normal ascii ordering, except that a tilde will sort before any other 
  * character, living or dead.
  */
-fn debian_cmp(a: &str, b: &str) -> int {
+fn debian_cmp(a: &str, b: &str) -> Ordering {
 
     for (ca, cb) in a.chars().zip(b.chars()) {
         if ca != cb {
-            if ca == '~' { return -1 };
-            if cb == '~' { return 1 };
-            return if ca < cb { -1 } else {1};
+            if ca == '~' { return Less };
+            if cb == '~' { return Greater };
+            return if ca < cb { Less } else { Greater };
         }
     }
 
@@ -403,56 +403,72 @@ fn debian_cmp(a: &str, b: &str) -> int {
     // exhausted both strings, then the strings are equal. If not, then the 
     // shorter string should always go first
 
-    return (a.len() as int) - (b.len() as int);
+    match (a.len() as int) - (b.len() as int) {
+        n if n < 0 => Less,
+        n if n > 0 => Greater,
+        _ => Equal
+    }
 }
 
 #[test]
 fn debian_cmp_prefers_tildes() {
-    assert!(debian_cmp("abcd~f", "abcdef") < 0);
-    assert!(debian_cmp("abcdef", "abcd~f") > 0);
+    assert!(debian_cmp("abcd~f", "abcdef") == Less);
+    assert!(debian_cmp("abcdef", "abcd~f") == Greater);
 }
 
 #[test]
 fn debian_cmp_lets_shorter_strings_go_first() {
-    assert!(debian_cmp("abc", "abcdef") < 0);
-    assert!(debian_cmp("abcdef", "abc") > 0);
+    assert!(debian_cmp("abc", "abcdef") == Less);
+    assert!(debian_cmp("abcdef", "abc") == Greater);
 }
 
 #[test]
 fn debian_cmp_doesnt_crash_on_an_empty_string() {
-    assert!(debian_cmp("", "abcdef") < 0);
-    assert!(debian_cmp("abcdef", "") > 0);
+    assert!(debian_cmp("", "abcdef") == Less);
+    assert!(debian_cmp("abcdef", "") == Greater);
 }
 
 #[test]
 fn debian_cmp_recognises_equal_strings() {
-    assert!(debian_cmp("abcdef", "abcdef") == 0);
-    assert!(debian_cmp("abcdef", "abcdef") == 0);
+    assert!(debian_cmp("abcdef", "abcdef") == Equal);
+    assert!(debian_cmp("abcdef", "abcdef") == Equal);
 }
 
 impl PartialOrd for Version {
-    //
-    fn lt(&self, other: &Version) -> bool {
-        if self.epoch < other.epoch { return true };
+    fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
+        match self.epoch.cmp(&other.epoch) {
+            Equal => {
+                // compare the chunks left-to-right, as far as we can
+                let mut chunks = self.chunks.iter().zip(other.chunks.iter());
+                for (ref s, ref o) in chunks {
+                    match debian_cmp(s.prefix.as_slice(), o.prefix.as_slice()) {
+                        Equal => {
+                            match s.number.cmp(&o.number) {
+                                Equal => {},
+                                rval => return Some(rval)
+                            }
+                        },
+                        rval => return Some(rval)
+                    }
+                };
 
-        // compare the chunks left-to-right, as far as we can
-        for (ref s, ref o) in self.chunks.iter().zip(other.chunks.iter()) {
-            if debian_cmp(s.prefix.as_slice(), o.prefix.as_slice()) < 0 { return true; }
-            if s.number < o.number { return true; }
-        };
-
-        // If we get to here, then the chunks are the same up to the point 
-        // that at least one of the upstream version chunks is exhausted. It's 
-        // possible that one string of chunks is longer, and the longer one 
-        // should be considered larger (e.g. 1.2.3 vs 1.2.3.4). If both chunk 
-        // strings are the same length, then compare the package revision
-        // and return that
-
-        match (self.chunks.len() as int) - (other.chunks.len() as int) {
-            n if n < 0 => return true,
-            n if n > 0 => return false,
-            0 => debian_cmp(self.revision.as_slice(), other.revision.as_slice()) < 0,
-            _ => fail!("Arithmetic is broken, we should never get to here.")
+                // If we get to here, then the chunks are the same up to the 
+                // point that at least one of the upstream version chunks is 
+                // exhausted. It's possible that one string of chunks is 
+                // longer, and the longer one should be considered larger 
+                // (e.g. 1.2.3 vs 1.2.3.4).
+                match (self.chunks.len() as int) - (other.chunks.len() as int) {
+                    n if n < 0 => return Some(Less),
+                    n if n > 0 => return Some(Greater),
+                    _ => {
+                        // If both chunk strings are the same length, then 
+                        // compare the package revision and return that
+                        let rval = debian_cmp(self.revision.as_slice(), other.revision.as_slice());
+                        return Some(rval);
+                    }
+                }
+            },
+            rval => return Some(rval)
         }
     }
 }
