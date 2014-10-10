@@ -635,7 +635,7 @@ fn trying_invalid_backtracked_assignment_fails() {
 /**
  * The main solver routine. Horribly side-effecting, but only internally.
  */
-fn solve(e: &Expression, varcount: uint, initial_sln: Solution) -> Option<Solution> {
+pub fn solve(e: &Expression, varcount: uint, initial_sln: Solution) -> Option<Solution> {
     let mut unassigned_vars = scan_unassigned_vars(varcount, &initial_sln);
     let mut stack : Vec<SolveState> = Vec::new();
     let mut sln = initial_sln.clone(); 
