@@ -286,7 +286,7 @@ fn installed_package_downgrades_are_disabled() {
     // have been set to false by the appropriate function.
     let db = &mk_test_db();
     let solver = Solver::new(db);
-    let sln = deny_installed_package_downgrades(&solver, &Solution::new()).unwrap();
+    let sln = deny_installed_package_downgrades(&solver, &Solution::new(100)).unwrap();
 
     debug!("Pkgs: {}", solver.pkgvars);
     debug!("Soln: {}", sln);

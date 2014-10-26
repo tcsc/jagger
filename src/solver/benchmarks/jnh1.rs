@@ -858,5 +858,5 @@ p cnf 100 850
  -68   88  0
  -36   42   50  -62  -80   83   98  0");
 
-    b.iter(|| ::solver::solve(&p.expression, p.varcount, Solution::new()).unwrap())
+    b.iter(|| ::solver::solve(&p.expression, p.varcount, Solution::new(p.varcount)).unwrap())
 }

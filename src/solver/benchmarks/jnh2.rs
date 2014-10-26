@@ -859,5 +859,5 @@ p cnf 100 850
    3  -67  -79  0
   -5   38   44  -53   83   84  -91  0");
 
-    b.iter(|| assert!(::solver::solve(&p.expression, p.varcount, Solution::new()) == None))
+    b.iter(|| assert!(::solver::solve(&p.expression, p.varcount, Solution::new(p.varcount)) == None))
 }
