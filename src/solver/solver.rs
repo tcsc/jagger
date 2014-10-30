@@ -358,14 +358,14 @@ fn solver_completes() {
         Some(sln) => {
             debug!("Solution: {}", sln);
 
-            assert!(range(1u, 8u).all(|x| sln.get(x) != Unassigned));
+            assert!(range(1u, 8u).all(|x| sln[x] != Unassigned));
             assert!(exp.apply(&sln) == True);
             assert!(sln[1] == True); // this at least must be true
 
             match sln.get(2) {
                 False => { 
-                    assert!(sln.get(6) == False, "If 2 is false then 5 *must* be true");
-                    assert!((sln.get(3) | sln.get(4)) == True, "If 2 is false then 3 | 4 *must* be true");
+                    assert!(sln[6] == False, "If 2 is false then 5 *must* be true");
+                    assert!((sln[3] | sln[4]) == True, "If 2 is false then 3 | 4 *must* be true");
                 }
                 _ => {}
             }
