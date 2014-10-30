@@ -157,18 +157,17 @@ fn dimacs_reader() {
     let problem = read(&mut reader).unwrap();
     assert!(problem.varcount == 5, "Expected varcount 5, got {}", problem.varcount);
 
-    assert!(problem.expression.iter().count() == 3);
-    let mut iter = problem.expression.iter();
+    assert!(problem.expression.clauses().count() == 3);
+    let mut iter = problem.expression.clauses();
     let c1 = iter.next().unwrap();
-    assert!(**c1 == Clause::from([Lit(1), Not(5), Lit(4)]),
-        "Expected [1, ~5, 4], got {}", c1);
+    assert!(c1 == [Lit(1), Not(5), Lit(4)], "Expected [1, ~5, 4], got {}", c1);
 
     let c2 = iter.next().unwrap();
-    assert!(**c2 == Clause::from([Not(1), Lit(5), Lit(3), Lit(4)]),
+    assert!(c2 == [Not(1), Lit(5), Lit(3), Lit(4)],
         "Expected [~1, 5, 3, 4], got {}", c2);
 
     let c3 = iter.next().unwrap();
-    assert!(**c3 == Clause::from([Not(3), Not(4)]),
+    assert!(c3 == [Not(3), Not(4)],
         "Expected [~3, ~4], got {}", c3);
 
     assert!(iter.next() == None);

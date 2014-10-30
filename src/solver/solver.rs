@@ -1,5 +1,5 @@
 use std::collections::{TrieMap, TrieSet};
-use std::collections::trie::{Entries};
+use std::collections::trie::{Entries, Keys};
 use std::fmt;
 use std::ops;
 use std::rc::Rc;
@@ -45,6 +45,11 @@ impl ImplicationMap {
         let ImplicationMap(ref me) = *self;
         me.iter()   
     }
+
+    fn vars<'a>(&'a self) -> Keys<'a, SolutionValue> {
+        let ImplicationMap(ref me) = *self;
+        me.keys()
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -55,29 +60,25 @@ impl ImplicationMap {
 struct SolveState {
     var: uint,
     value: SolutionValue,
-    expression: Expression,
     implications: ImplicationMap
 }
 
 impl SolveState {
-    fn new(exp: Expression, 
-           var: uint, 
+    fn new(var: uint, 
            value: SolutionValue, 
            implications: ImplicationMap) -> SolveState {
         SolveState { 
             var: var, 
             value: value, 
-            implications: implications,
-            expression: exp
+            implications: implications
         }
     }
 
-    fn new_unassigned(e: Expression, var: uint) -> SolveState {
+    fn new_unassigned(var: uint) -> SolveState {
         SolveState {
             var: var, 
             value: Unassigned, 
-            implications: ImplicationMap::new(), 
-            expression: e
+            implications: ImplicationMap::new()
         }
     }
 }
@@ -85,14 +86,16 @@ impl SolveState {
 /**
  * Chooses the next variable to assign from the set.
  */
-fn pick_var(vars: &VarSet, exp: &Expression) -> uint {
-    for clause in exp.iter() {
-        for t in clause.terms() {
-            let v = t.var();
-            if vars.contains(&v) { return v; } 
-        }
-    }
-    fail!("Empty variable set");
+fn pick_var(vars: &VarSet) -> uint {
+    vars.iter().next().unwrap()
+
+    // for clause in exp.iter() {
+    //     for t in clause.terms() {
+    //         let v = t.var();
+    //         if vars.contains(&v) { return v; } 
+    //     }
+    // }
+    // fail!("Empty variable set");
 }
 
 fn scan_unassigned_vars(varcount: uint, sln: &Solution) -> VarSet {
@@ -127,58 +130,57 @@ type StateStack = Vec<SolveState>;
 
 fn try_assignment(state: SolveState, 
                   stack: &mut StateStack, 
-                  unassigned_vars: &mut VarSet, 
+                  unassigned_vars: &mut VarSet,
+                  exp: &Expression, 
                   sln: &mut Solution) -> bool {
     let var = state.var;
     let val = next_val(state.value);
-    let exp = state.expression;
 
     debug!("\tAttempting to set {} = {}", var, val);
 
     sln.set(var, val);
     unassigned_vars.remove(&var);
 
-    match propagate(sln, &exp) {
+    match propagate(sln, var, val, exp) {
         // Yay - the assinment of var = val was valid. Time to update the bookkeeping. 
-        Success (new_exp, mut implications) => {
-            implications.add(var, val);
+        Success (implications) => {
 
-            debug!("\tOriginal expression: {}", exp);
-            debug!("\tSimplified expression: {}", new_exp);
+//            debug!("\tOriginal expression: {}", exp);
+//            debug!("\tSimplified expression: {}", new_exp);
 
             // remove all variables that we assigned values to in this pass 
             // from the unassigned variables set.
             for (k, v) in implications.iter() {
                 unassigned_vars.remove(&k);
-                sln.set(k, *v);
             }
 
             // we're effectively done; if we already know the expression will 
             // evaluate to True then the values of all the currenylt unassigned 
             // variables don't matter. 
-            if new_exp.is_empty() {
-                debug!("All clauses in the expression have been evaluated.")
 
-                // set all unassigned vars to false - we don't want to install
-                // things that don't need to be installed. 
-                for v in unassigned_vars.iter() {
-                    sln.set(v, False)
-                }
+            // if new_exp.is_empty() {
+            //     debug!("All clauses in the expression have been evaluated.")
 
-                // everything is now assigned. woot.
-                unassigned_vars.clear();
-            }
+            //     // set all unassigned vars to false - we don't want to install
+            //     // things that don't need to be installed. 
+            //     for v in unassigned_vars.iter() {
+            //         sln.set(v, False)
+            //     }
+
+            //     // everything is now assigned. woot.
+            //     unassigned_vars.clear();
+            // }
 
 
             // Push a record of what we did to the stack to allow for 
             // backtraking if need be.
-            stack.push( SolveState::new(exp, var, val, implications) );
+            stack.push( SolveState::new(var, val, implications) );
 
             // if we still have work to do...
             if !unassigned_vars.is_empty() {
                 debug!("\tSelecting new var");
-                let v = pick_var(unassigned_vars, &new_exp);
-                stack.push(SolveState::new_unassigned(new_exp, v));
+                let v = pick_var(unassigned_vars);
+                stack.push(SolveState::new_unassigned(v));
             }
 
             true
@@ -190,7 +192,7 @@ fn try_assignment(state: SolveState,
             debug!("Assignment failed.");
             if val == False {
                 debug!("Setting up for retry");
-                stack.push( SolveState::new(exp, var, val, ImplicationMap::new()) );
+                stack.push( SolveState::new(var, val, ImplicationMap::new()) );
             }
             else {
                 debug!("Setting up for Backtracking");
@@ -212,20 +214,20 @@ fn trying_valid_assignment_on_new_var_succeeds() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
-    let mut stack = vec![SolveState::new_unassigned(exp, 5)];
+    let mut stack = vec![SolveState::new_unassigned(5)];
     let mut vars = TrieSet::new();
     for v in [1, 2, 3, 4, 6].iter() {
         vars.insert(*v);
     }
     let mut sln = Solution::new(6);
-    assert!(try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+    assert!(try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &exp, &mut sln));
     assert!(stack.len() == 2);
 
-    assert!(stack.get(1).value == Unassigned);
-    assert!(stack.get(1).var != 5);
-    assert!(stack.get(1).implications.is_empty());
+    assert!(stack[1].value == Unassigned);
+    assert!(stack[1].var != 5);
+    assert!(stack[1].implications.is_empty());
 
-    assert!(sln.get(5) == False);
+    assert!(sln[5] == False);
     
     debug!("Stack: {}", stack);
 }
@@ -238,20 +240,20 @@ fn trying_invalid_assignment_on_new_var_fails() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
-    let mut stack = vec![SolveState::new_unassigned(exp, 1)];
+    let mut stack = vec![SolveState::new_unassigned(1)];
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
         vars.insert(*v);
     }
     let mut sln = Solution::new(6);
-    assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+    assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &exp, &mut sln));
     assert!(stack.len() == 1);
 
-    assert!(stack.get(0).value == False);
-    assert!(stack.get(0).var == 1);
-    assert!(stack.get(0).implications.is_empty());
+    assert!(stack[0].value == False);
+    assert!(stack[0].var == 1);
+    assert!(stack[0].implications.is_empty());
 
-    assert!(sln.get(1) == Unassigned);
+    assert!(sln[1] == Unassigned);
 
     debug!("Stack: {}", stack);
 }
@@ -265,7 +267,7 @@ fn trying_valid_backtracked_assignment_succeeds() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut stack = vec![SolveState::new(exp, 1, False, ImplicationMap::new())];
+    let mut stack = vec![SolveState::new(1, False, ImplicationMap::new())];
 
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
@@ -273,19 +275,19 @@ fn trying_valid_backtracked_assignment_succeeds() {
     }
 
     let mut sln = Solution::new(6);
-    assert!(try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+    assert!(try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &exp, &mut sln));
     assert!(stack.len() == 2);
 
-    assert!(stack.get(0).var == 1);
-    assert!(stack.get(0).value == True);
-    assert!(stack.get(0).implications.value_of(1) == True, 
-            "Expected {}, got {}", True, stack.get(0).implications.value_of(1));
+    assert!(stack[0].var == 1);
+    assert!(stack[0].value == True);
+    assert!(stack[0].implications.value_of(1) == True, 
+            "Expected {}, got {}", True, stack[0].implications.value_of(1));
 
-    assert!(stack.get(1).value == Unassigned);
-    assert!(stack.get(1).var != 5);
-    assert!(stack.get(1).implications.is_empty());
+    assert!(stack[1].value == Unassigned);
+    assert!(stack[1].var != 5);
+    assert!(stack[1].implications.is_empty());
 
-    assert!(sln.get(1) == True);
+    assert!(sln[1] == True);
 
     debug!("Stack: {}", stack);
 }
@@ -299,7 +301,7 @@ fn trying_invalid_backtracked_assignment_fails() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut stack = vec![SolveState::new(exp, 1, False, ImplicationMap::new())];
+    let mut stack = vec![SolveState::new(1, False, ImplicationMap::new())];
 
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
@@ -307,7 +309,7 @@ fn trying_invalid_backtracked_assignment_fails() {
     }
 
     let mut sln = Solution::new(6);
-    assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &mut sln));
+    assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &exp, &mut sln));
 
     debug!("Stack: {}", stack);
 }
@@ -322,9 +324,7 @@ pub fn solve(e: &Expression,
     let mut stack : Vec<SolveState> = Vec::new();
     let mut sln = initial_sln.clone(); 
 
-    stack.push( SolveState::new_unassigned(
-        (*e).clone(), 
-        pick_var(&mut unassigned_vars, e)) );
+    stack.push( SolveState::new_unassigned( pick_var(&mut unassigned_vars)) );
     while !unassigned_vars.is_empty() {
         if stack.is_empty() { return None; }
         let state = stack.pop().unwrap();
@@ -341,12 +341,14 @@ pub fn solve(e: &Expression,
         if log_enabled!(log::INFO) {
             let unv : Vec<uint> = FromIterator::from_iter(unassigned_vars.iter());
             debug!("Unassigned vars: {}", unv);
+
+            debug!("Solution: {}", sln);
         }
 
         //
         match state.value {
             Unassigned | False => {
-                try_assignment(state, &mut stack, &mut unassigned_vars, &mut sln);
+                try_assignment(state, &mut stack, &mut unassigned_vars, e, &mut sln);
             },
 
             // We have tried both forks. Time to backtrack
@@ -383,7 +385,7 @@ fn solver_completes() {
 
             assert!(range(1u, 8u).all(|x| sln.get(x) != Unassigned));
             assert!(exp.apply(&sln) == True);
-            assert!(sln.get(1) == True); // this at least must be true
+            assert!(sln[1] == True); // this at least must be true
 
             match sln.get(2) {
                 False => { 
@@ -417,6 +419,43 @@ fn solver_detects_basic_contradiction() {
     }
 }
 
+enum ClauseAnalysis {
+    IsTrue, IsFalse, IsUnit (Term), IsIndeterminate
+}
+
+fn analyse_clause(clause: &[Term], sln: &Solution) -> ClauseAnalysis {
+    let mut value = False;
+    let mut unassigned_terms = Vec::with_capacity(clause.len());
+
+    // walk each term in the Clause and try to evaluate it.
+    for term in clause.iter() {
+        let t = term.value(sln);
+        value = value | t;
+
+        if t == Unassigned {
+            unassigned_terms.push(term);
+        }
+
+        if value == True {
+            break;
+        }
+    }
+
+    match value {
+        True => IsTrue,
+        False => IsFalse,
+        Unassigned => {
+            assert!(unassigned_terms.len() > 0);
+
+            if unassigned_terms.len() == 1 {
+                IsUnit(*unassigned_terms[0])
+            }
+            else {
+                IsIndeterminate
+            }
+        }
+    }
+}
 
 #[deriving(Show)]
 enum PropagationResult {
@@ -436,144 +475,117 @@ enum PropagationResult {
      *   implications - A dictionary of the values deduced from this 
      *                  propagation pass.
      */
-    Success (Expression, ImplicationMap)
+    Success (ImplicationMap)
 }
 
 /**
  * \todo Index the terms in each clause so we don't have to go through the 
- *       whole expression for each variable.
+ *       whole expression for each variable (just do the ones we know will 
+ *       be touched by an assignment).
  */
-fn propagate(sln: &Solution, e: &Expression) -> PropagationResult {
-    let mut new_exp = Expression::new();
+fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Expression) -> PropagationResult {
     let mut implications = ImplicationMap::new();
-        
-    debug!("\t\tInput expression: {}", e);
-    debug!("\t\tInput solution: {}", sln);
-    
-    for clause in e.iter() {
-        let mut value = False;
-        let mut unassigned_terms = Vec::with_capacity(clause.len());
+    let mut queue : Vec<(Var, SolutionValue)> = Vec::new();
+    queue.push((seed_var, seed_val));
+    implications.add(seed_var, seed_val);
 
-        // walk each term in the Clause and try to evaluate it.
-        for term in clause.terms() {
-            match term.value(sln) {
-                Unassigned => { unassigned_terms.push(term) },
-                v => { value = value | v; }
-            }
+    while !queue.is_empty() {
+        let (var, val) = queue.pop().unwrap();
 
-            if value == True { break }
-        }
+        debug!("\tChecking implications of setting {} = {}", var, val)
 
-        // decide what to do based on out evaluation attempt above
-        match value {
-            True => {
-                // At least one term in the Clause evaluates to true, meaning 
-                // that the entire Clause does. This in turn means that the 
-                // entire Clause can be removed from the expression and so reduce
-                // the search space for the next time around. 
+        sln.set(var, val);
 
-                // Watch us explicitly not copy the Clause into the output 
-                // expression.
-                debug!("\t\tEliminiating clause {}", clause);
-            },
+        for clause in e.clauses_containing(var) {
+            match analyse_clause(clause, sln) {
+                IsUnit (term) => {
+                    debug!("\t\tFound unit clause {}, term of interest is {}", clause, term)
+                    let v = term.var();
 
-            False => {
-                match unassigned_terms.len() {
-                    // oh, dear. All variables in the term have values and the
-                    // Clause evaluates to false. Bail out and let the caller 
-                    // know that this can't possibly be the right answer.
-                    0 => {
-                        debug!("\t\tClause {} evaluates to false. Ooops.", clause); 
-                        return EvaluatesToFalse 
-                    },
+                    // deduce value
+                    let deduced_value = match term {
+                        Lit (_) => True,
+                        Not (_) => False
+                    };
 
-                    // We have a 'unit' Clause (i.e. all terms bar one are 
-                    // false). We can infer a value for the remaining value and
-                    // propagate that.
-                    1 => {
-                        debug!("\t\tExamining unit Clause: {}", clause);
+                    debug!("\t\tDeduced that {} = {}", v, deduced_value);
 
-                        let term = *unassigned_terms.get(0);
-                        let var = term.var();
+                    // check for a contradiction - have we aleady deduced that 
+                    // this variable must have a different value?
+                    debug!("\t\tExisting implication for {} is {}", v, implications.value_of(v));
+                    match implications.value_of(v) {
+                        Unassigned => { 
+                            queue.push((v, deduced_value));
+                            implications.add(v, deduced_value);
+                        },
 
-                        // deduce value
-                        let deduced_value = match *term {
-                            Lit (_) => True,
-                            Not (_) => False
-                        };
+                        x if x != deduced_value => { 
+                            debug!("\t\tDetected contradiction on {}!", v);
+                            sln.unset_all(implications.vars());
+                            return Contradiction(v) 
+                        },
 
-                        debug!("\t\tDeduced that {} = {}", var, deduced_value);
-
-                        // check for a contradiction
-                        match implications.value_of(var) {
-                            Unassigned => implications.add(var, deduced_value),
-                            x if x != deduced_value => { 
-                                debug!("\t\tDetected contradiction on {}!", var);
-                                return Contradiction(var) 
-                            },
-                            _ => { /* value is consistent, all is well */ }
-                        }
-
-                        // watch us once again not copy the input clause to the
-                        // output expression, as we now know that the clause 
-                        // evaluates to true.
-                        debug!("\t\tEliminiating unit clause {}", clause);
-                    },
-
-                    // We have multiple unassigned variables in the Clause; not 
-                    // much we can do here except wait for more letters in the 
-                    // crossword.
-                    _ => {
-                        // copy the Clause into the output expression
-                        new_exp.add_ref(clause);
+                        _ => { /* value is consistent, all is well */ }
                     }
-                };
-            },
+                },
 
-            Unassigned => { 
-                fail!("Clause evaluates to unassigned. This should have been expressly forbidden."); 
+                IsTrue => { 
+                    debug!("\t\tClause {} is TRUE", clause);
+                },
+
+                IsFalse => {
+                    // oh, dear. All variables in the term have values and the
+                    // clause evaluates to false. Bail out and let the caller 
+                    // know that this can't possibly be the right answer.
+                    debug!("\t\tClause {} evaluates to false. Ooops.", clause); 
+                    sln.unset_all(implications.vars());
+                    return EvaluatesToFalse
+                },
+
+                IsUnassigned => { 
+                    debug!("\t\tClause {} is still unassigned", clause);
+                }
             }
         }
     }
 
-    Success (new_exp, implications)
+    Success (implications)
 }
 
-#[test]
-fn propagation_eliminates_true_clauses() {
-    let exp = Expression::from(&[
-        &[Lit(2), Lit(3), Lit(4)],
-        &[Not(1)],
-        &[Lit(5), Lit(6)],
-        &[Lit(2), Not(6)]
-    ]);
+// #[test]
+// fn propagation_eliminates_true_clauses() {
+//     let exp = Expression::from(&[
+//         &[Lit(2), Lit(3), Lit(4)],
+//         &[Not(1)],
+//         &[Lit(5), Lit(6)],
+//         &[Lit(2), Not(6)]
+//     ]);
 
-    let sln = Solution::from(6, &[(1, False), (2, False), (5, True)]);
-    match propagate(&sln, &exp) {
-        Success (new_exp, _) => {
-            let expected = Expression::from(&[
-                &[Lit(2), Lit(3), Lit(4)]
-            ]);
-            assert!(new_exp == expected, "Expected {}, got {}", expected, new_exp);
-        },
-        other => {
-            fail!("Unexpected propagation result: {}", other)
-        }
-    }
-}
+//     let sln = Solution::from(6, &[(1, False), (2, False), (5, True)]);
+//     match propagate(&sln, &exp) {
+//         Success (new_exp) => {
+//             let expected = Expression::from(&[
+//                 &[Lit(2), Lit(3), Lit(4)]
+//             ]);
+//             assert!(new_exp == expected, "Expected {}, got {}", expected, new_exp);
+//         },
+//         other => {
+//             fail!("Unexpected propagation result: {}", other)
+//         }
+//     }
+// }
 
 #[test]
 fn propagation_deduces_true_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Lit(3), Lit(4)]]);
-    let sln = Solution::from(4, &[(1, False), (2, False), (4, False)]);
-    match propagate(&sln, &exp) {
-        Success (new_exp, implications) => {
-            let expected_expression = Expression::new();
-            assert!(expected_expression == new_exp, "Expected {}, got {}", expected_expression, new_exp);
-
+    let mut sln = Solution::from(4, &[(1, False), (2, False)]);
+    match propagate(&mut sln, 4, False, &exp) {
+        Success (implications) => {
             let mut expected_implications = ImplicationMap::new();
             expected_implications.add(3u, True); 
-            assert!(implications == expected_implications)
+            expected_implications.add(4u, False); 
+            assert!(implications == expected_implications, 
+                "Expected {}, got {}", expected_implications, implications)
         },
         other => {
             fail!("Unexpected propagation result: {}", other)
@@ -584,15 +596,14 @@ fn propagation_deduces_true_value() {
 #[test]
 fn propagation_deduces_false_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Not(3), Lit(4)]]);
-    let sln = Solution::from(4, &[(1, False), (2, False), (4, False)]);
-    match propagate(&sln, &exp) {
-        Success (new_exp, deduced_values) => {
-            let expected_expression = Expression::new();
-            assert!(new_exp == expected_expression, "Expected {}, got {}", expected_expression, new_exp);
-
+    let mut sln = Solution::from(4, &[(1, False), (2, False)]);
+    match propagate(&mut sln, 4, False, &exp) {
+        Success (implications) => {
             let mut expected_implications = ImplicationMap::new();
             expected_implications.add(3u, False); 
-            assert!(deduced_values == expected_implications);
+            expected_implications.add(4u, False);
+            assert!(implications == expected_implications,
+                "Expected {}, got {}", expected_implications, implications)
         },
         other => {
             fail!("Unexpected propagation result: {}", other)
@@ -607,12 +618,16 @@ fn propagation_detects_contradictions() {
         &[Lit(1), Lit(2), Not(3)],
     ]);
 
-    let sln = Solution::from(3, &[(1, False), (2, False)]);
-
-    match propagate(&sln, &exp) {
+    let mut sln = Solution::from(3, &[(1, False)]);
+    
+    match propagate(&mut sln, 2, False, &exp) {
         Contradiction (n) => assert!(n == 3, "Expected a contractiction of variable #3"),
         other => fail!("Unexpected result from propagate(): {}", other)
     }
+
+    assert!(sln[1] == False, "Expected False, got {}", sln[1]);
+    assert!(sln[2] == Unassigned, "Expected Unassigned, got {}", sln[2]);
+    assert!(sln[3] == Unassigned, "Expected Unassigned, got {}", sln[3]);
 }
 
 #[test]
@@ -622,9 +637,9 @@ fn propagation_detects_evaluation_to_false() {
         &[Lit(1), Lit(2), Not(4)],
     ]);
 
-    let sln = Solution::from(4, &[(1, False), (2, False), (3, False)]);
+    let mut sln = Solution::from(4, &[(1, False), (2, False)]);
 
-    match propagate(&sln, &exp) {
+    match propagate(&mut sln, 3, False, &exp) {
         EvaluatesToFalse => {},
         other => fail!("Unexpected result from propagate(): {}", other)
     }
