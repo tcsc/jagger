@@ -374,31 +374,6 @@ impl Expression {
         Expression { data: v, offsets: offsets, index: index }
     }
 
-    // pub fn iter<'a>(&'a self) -> slice::Items<'a, Rc<Clause>> //-> Items<Rc<Clause>> 
-    // {
-    //     let Expression(ref v) = *self;
-    //     v.iter()
-    // }
-
-    // fn len(&self) -> uint {
-    //     let Expression(ref v) = *self;
-    //     v.len()
-    // }
-
-    // fn add(&mut self, clause: Clause) {
-    //     let Expression(ref mut v) = *self;
-    //     v.push(Rc::new(clause));
-    // }
-
-    // pub fn add_ref(&mut self, clause: &Rc<Clause>) {
-    //     let Expression(ref mut v) = *self;
-    //     v.push(clause.clone())
-    // }
-
-    // pub fn is_empty(&self) -> bool {
-    //     self.offsets.is_empty()
-    // }
-
     pub fn clauses(&self) -> ClauseIterator {
         ClauseIterator { 
             data: &self.data, 

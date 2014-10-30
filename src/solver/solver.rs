@@ -145,32 +145,11 @@ fn try_assignment(state: SolveState,
         // Yay - the assinment of var = val was valid. Time to update the bookkeeping. 
         Success (implications) => {
 
-//            debug!("\tOriginal expression: {}", exp);
-//            debug!("\tSimplified expression: {}", new_exp);
-
             // remove all variables that we assigned values to in this pass 
             // from the unassigned variables set.
             for (k, v) in implications.iter() {
                 unassigned_vars.remove(&k);
             }
-
-            // we're effectively done; if we already know the expression will 
-            // evaluate to True then the values of all the currenylt unassigned 
-            // variables don't matter. 
-
-            // if new_exp.is_empty() {
-            //     debug!("All clauses in the expression have been evaluated.")
-
-            //     // set all unassigned vars to false - we don't want to install
-            //     // things that don't need to be installed. 
-            //     for v in unassigned_vars.iter() {
-            //         sln.set(v, False)
-            //     }
-
-            //     // everything is now assigned. woot.
-            //     unassigned_vars.clear();
-            // }
-
 
             // Push a record of what we did to the stack to allow for 
             // backtraking if need be.
@@ -467,10 +446,7 @@ enum PropagationResult {
     Contradiction (uint),
 
     /**
-     * (new_exp, implications) where
-     *
-     *   new_exp - An abbbreviated version of the input expression, where all
-     *             Clauses proven to be true have been removed.
+     * (implications) where
      *
      *   implications - A dictionary of the values deduced from this 
      *                  propagation pass.
@@ -479,9 +455,7 @@ enum PropagationResult {
 }
 
 /**
- * \todo Index the terms in each clause so we don't have to go through the 
- *       whole expression for each variable (just do the ones we know will 
- *       be touched by an assignment).
+ *
  */
 fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Expression) -> PropagationResult {
     let mut implications = ImplicationMap::new();
@@ -551,29 +525,6 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
 
     Success (implications)
 }
-
-// #[test]
-// fn propagation_eliminates_true_clauses() {
-//     let exp = Expression::from(&[
-//         &[Lit(2), Lit(3), Lit(4)],
-//         &[Not(1)],
-//         &[Lit(5), Lit(6)],
-//         &[Lit(2), Not(6)]
-//     ]);
-
-//     let sln = Solution::from(6, &[(1, False), (2, False), (5, True)]);
-//     match propagate(&sln, &exp) {
-//         Success (new_exp) => {
-//             let expected = Expression::from(&[
-//                 &[Lit(2), Lit(3), Lit(4)]
-//             ]);
-//             assert!(new_exp == expected, "Expected {}, got {}", expected, new_exp);
-//         },
-//         other => {
-//             fail!("Unexpected propagation result: {}", other)
-//         }
-//     }
-// }
 
 #[test]
 fn propagation_deduces_true_value() {
