@@ -1,9 +1,5 @@
 use std::collections::{TrieMap, TrieSet};
 use std::collections::trie::{Entries, Keys};
-use std::fmt;
-use std::ops;
-use std::rc::Rc;
-use std::slice;
 use log;
 use solver::types::{SolutionValue, True, False, Unassigned};
 use solver::types::{Term, Lit, Not};
@@ -147,7 +143,7 @@ fn try_assignment(state: SolveState,
 
             // remove all variables that we assigned values to in this pass 
             // from the unassigned variables set.
-            for (k, v) in implications.iter() {
+            for (k, _) in implications.iter() {
                 unassigned_vars.remove(&k);
             }
 
@@ -392,7 +388,7 @@ fn solver_detects_basic_contradiction() {
 
     match solve(&exp, 7, Solution::new(7)) {
         None => { }
-        Some(sln) => { 
+        Some(_) => { 
             fail!("Expression contains a contradiction, so shouldn't succeed.")
         }
     }

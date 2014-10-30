@@ -1,5 +1,4 @@
-use std::collections::{TreeMap, TrieMap, TrieSet};
-use std::collections::treemap::{Entries};
+use std::collections::{TrieMap};
 use std::fmt;
 use std::ops;
 use std::rc::Rc;

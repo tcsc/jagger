@@ -1,8 +1,6 @@
 use std::io;
 use std::num;
-use std::rc::Rc;
-use solver;
-use solver::{Expression, Clause, ClauseRef, Term, Lit, Not};
+use solver::{Expression, Term, Lit, Not};
 
 // ----------------------------------------------------------------------------
 //
@@ -59,12 +57,12 @@ fn read_problem_header(s: &str) -> Result<(int, int), DimacsError> {
     let parts : Vec<&str> = s.split(' ').collect();
     match parts.len() {
         4 => { 
-            if *parts.get(1) != "cnf" { 
+            if *parts[1] != "cnf" { 
                 let msg = format!("expected \"cnf\", got \"{}\"", parts.get(1));
                 return Err(ParseFailure(msg)) 
             }
-            let vars = try!(read_int(*parts.get(2)));
-            let clauses = try!(read_int(*parts.get(3)));
+            let vars = try!(read_int(parts[2]));
+            let clauses = try!(read_int(parts[3]));
             Ok((vars, clauses))
         }
         _ => {
@@ -136,7 +134,9 @@ pub fn read<B: io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
 fn make_buffer(lines: &[&str]) -> io::MemReader {
     let mut text = io::MemWriter::new();
     for s in lines.iter() {
-        text.write_str(*s);
+        match text.write_str(*s) {
+            n => {}
+        }
     }
     io::MemReader::new( text.unwrap() )
 }

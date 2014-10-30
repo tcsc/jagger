@@ -227,7 +227,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
     let db = &mk_test_db();
     let s = Solver::new(db);
 
-    let mk_test_Clause = |name, ord| -> Clause {
+    let mk_test_clause = |name, ord| -> Clause {
         FromIterator::from_iter(
             db.select(name, Gte(ord))
               .iter()
@@ -235,7 +235,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
               .map(|v| Lit(v)))
     };
 
-    let find_Clause = |a: &Clause, b: &Clause| -> bool {
+    let find_clause = |a: &Clause, b: &Clause| -> bool {
         let Clause(ref r1) = *a;
         let Clause(ref r2) = *b;
         r1 == r2
@@ -245,16 +245,16 @@ fn installed_packages_must_be_installed_or_upgraded() {
         Ok (clauses) => {
             assert!(clauses.len() == 2, "Expected 2 Clauses, got {}", clauses.len());
 
-            let r1 = mk_test_Clause("alpha", 1);
-            let r2 = mk_test_Clause("beta", 4);
+            let r1 = mk_test_clause("alpha", 1);
+            let r2 = mk_test_clause("beta", 4);
 
             assert!(clauses.iter()
-                         .find(|x| find_Clause(x.deref(), &r1))
+                         .find(|x| find_clause(x.deref(), &r1))
                          .is_some(), 
                     "Couldn't find Clause {}", r1);
 
             assert!(clauses.iter()
-                         .find(|x| find_Clause(x.deref(), &r2))
+                         .find(|x| find_clause(x.deref(), &r2))
                          .is_some(), 
                     "Couldn't find Clause {}", r2);
 
