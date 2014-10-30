@@ -4,7 +4,7 @@ use solver::Solution;
 use solver::benchmarks::tools;
 
 #[bench]
-fn jnh1(b: &mut Bencher) {
+fn jnh01(b: &mut Bencher) {
   let p = tools::load_problem("
 p cnf 100 850
    8   80   97  0
