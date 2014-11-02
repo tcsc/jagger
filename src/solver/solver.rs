@@ -1,5 +1,6 @@
 use std::collections::{TrieMap, TrieSet};
 use std::collections::trie::{Entries, Keys};
+use std::fmt;
 use log;
 use solver::types::{SolutionValue, True, False, Unassigned};
 use solver::types::{Term, Lit, Not};
@@ -52,46 +53,11 @@ impl ImplicationMap {
 //
 // ----------------------------------------------------------------------------
 
-#[deriving(Show)]
-struct SolveState {
-    var: uint,
-    value: SolutionValue,
-    implications: ImplicationMap
-}
-
-impl SolveState {
-    fn new(var: uint, 
-           value: SolutionValue, 
-           implications: ImplicationMap) -> SolveState {
-        SolveState { 
-            var: var, 
-            value: value, 
-            implications: implications
-        }
-    }
-
-    fn new_unassigned(var: uint) -> SolveState {
-        SolveState {
-            var: var, 
-            value: Unassigned, 
-            implications: ImplicationMap::new()
-        }
-    }
-}
-
 /**
  * Chooses the next variable to assign from the set.
  */
 fn pick_var(vars: &VarSet) -> uint {
     vars.iter().next().unwrap()
-
-    // for clause in exp.iter() {
-    //     for t in clause.terms() {
-    //         let v = t.var();
-    //         if vars.contains(&v) { return v; } 
-    //     }
-    // }
-    // fail!("Empty variable set");
 }
 
 fn scan_unassigned_vars(varcount: uint, sln: &Solution) -> VarSet {
@@ -122,7 +88,79 @@ fn nextval_fails_on_overrun() {
     next_val(True);
 }
 
-type StateStack = Vec<SolveState>;
+// ----------------------------------------------------------------------------
+// Solve state tracking
+// ----------------------------------------------------------------------------
+
+#[deriving(Show)]
+struct SolveState {
+    var: uint,
+    value: SolutionValue,
+    implications: ImplicationMap
+}
+
+struct StateStack {
+    stack: Vec<SolveState>
+}
+
+impl StateStack {
+    fn new() -> StateStack { 
+        StateStack { stack: Vec::new() } 
+    }
+
+    fn new_with_unassigned(var: Var) -> StateStack {
+        let mut s = StateStack::new();
+        s.push_unassigned(var);
+        s
+    }
+
+    fn push(&mut self, 
+            var: Var, 
+            value: SolutionValue,
+            implications: ImplicationMap) {
+        self.stack.push( SolveState {
+            var: var, 
+            value: value, 
+            implications: implications
+        });
+    }
+
+    fn push_unassigned(&mut self, var: Var) {
+        self.stack.push( SolveState {
+            var: var, 
+            value: Unassigned, 
+            implications: ImplicationMap::new()
+        });
+    }
+
+    fn pop(&mut self) -> Option<SolveState> {
+        self.stack.pop()
+    }
+}
+
+impl Collection for StateStack {
+    fn len(&self) -> uint { self.stack.len() }
+    fn is_empty(&self) -> bool { self.stack.is_empty() }
+}
+
+impl Index<uint, SolveState> for StateStack {
+    fn index<'a>(&'a self, index: &uint) -> &SolveState {
+        &self.stack[*index]
+    }
+}
+
+impl fmt::Show for StateStack {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, s) in self.stack.iter().enumerate() {
+            try!(write!(f, "{}: {}", i, s))
+        }
+        Ok(())
+    }
+}
+
+// ----------------------------------------------------------------------------
+//
+// ----------------------------------------------------------------------------
 
 fn try_assignment(state: SolveState, 
                   stack: &mut StateStack, 
@@ -149,13 +187,13 @@ fn try_assignment(state: SolveState,
 
             // Push a record of what we did to the stack to allow for 
             // backtraking if need be.
-            stack.push( SolveState::new(var, val, implications) );
+            stack.push(var, val, implications);
 
             // if we still have work to do...
             if !unassigned_vars.is_empty() {
                 debug!("\tSelecting new var");
                 let v = pick_var(unassigned_vars);
-                stack.push(SolveState::new_unassigned(v));
+                stack.push_unassigned(v);
             }
 
             true
@@ -167,7 +205,7 @@ fn try_assignment(state: SolveState,
             debug!("Assignment failed.");
             if val == False {
                 debug!("Setting up for retry");
-                stack.push( SolveState::new(var, val, ImplicationMap::new()) );
+                stack.push(var, val, ImplicationMap::new());
             }
             else {
                 debug!("Setting up for Backtracking");
@@ -189,7 +227,7 @@ fn trying_valid_assignment_on_new_var_succeeds() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
-    let mut stack = vec![SolveState::new_unassigned(5)];
+    let mut stack = StateStack::new_with_unassigned(5);
     let mut vars = TrieSet::new();
     for v in [1, 2, 3, 4, 6].iter() {
         vars.insert(*v);
@@ -215,7 +253,7 @@ fn trying_invalid_assignment_on_new_var_fails() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
-    let mut stack = vec![SolveState::new_unassigned(1)];
+    let mut stack = StateStack::new_with_unassigned(1);
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
         vars.insert(*v);
@@ -242,7 +280,8 @@ fn trying_valid_backtracked_assignment_succeeds() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut stack = vec![SolveState::new(1, False, ImplicationMap::new())];
+    let mut stack = StateStack::new();
+    stack.push(1, False, ImplicationMap::new());
 
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
@@ -276,7 +315,8 @@ fn trying_invalid_backtracked_assignment_fails() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut stack = vec![SolveState::new(1, False, ImplicationMap::new())];
+    let mut stack = StateStack::new();
+    stack.push(1, False, ImplicationMap::new());
 
     let mut vars = TrieSet::new();
     for v in [2, 3, 4, 5, 6].iter() {
@@ -285,8 +325,6 @@ fn trying_invalid_backtracked_assignment_fails() {
 
     let mut sln = Solution::new(6);
     assert!(!try_assignment(stack.pop().unwrap(), &mut stack, &mut vars, &exp, &mut sln));
-
-    debug!("Stack: {}", stack);
 }
 
 /**
@@ -296,10 +334,10 @@ pub fn solve(e: &Expression,
              varcount: uint, 
              initial_sln: Solution) -> Option<Solution> {
     let mut unassigned_vars = scan_unassigned_vars(varcount, &initial_sln);
-    let mut stack : Vec<SolveState> = Vec::new();
+    let mut stack = StateStack::new();
     let mut sln = initial_sln.clone(); 
 
-    stack.push( SolveState::new_unassigned( pick_var(&mut unassigned_vars)) );
+    stack.push_unassigned( pick_var(&mut unassigned_vars));
     while !unassigned_vars.is_empty() {
         if stack.is_empty() { return None; }
         let state = stack.pop().unwrap();
@@ -512,8 +550,8 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
                     return EvaluatesToFalse
                 },
 
-                IsUnassigned => { 
-                    debug!("\t\tClause {} is still unassigned", clause);
+                IsIndeterminate => { 
+                    debug!("\t\tClause {} is still indeterminate", clause);
                 }
             }
         }
