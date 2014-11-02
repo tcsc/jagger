@@ -101,16 +101,15 @@ fn not_assigned_solution_behaves_like_boolean() {
 
 
 /**
- * A variable-to-value mapping.
+ * A variable-to-value mapping. Implemented as a thumping great vector, as
+ * every variable will have to have a value at some point anyway, and a vector
+ * will be more memory & time efficient than a tree map. The tradeoff is that
+ * while we will use less peak memory, we will use a smaller chunk for longer.
  * 
- * This might be made faster & more memory-efficient by implementing it as an array 
- * rather than a tree, especially given that every variable in the problem will 
- * definitely  have a value by the end of the solve.
- *
- * It could be further compressed by storing the values as two-bit (ie: 
- * unassigned: 00, true: 01, false: 10) values packed into larger cells. We'd need to
- * actually benchmark this to see if the memory & cache efficiency is worth the extra 
- * pack & unpack code.
+ * Note that the sollution could be further compressed by storing the values as
+ * two-bit (e.g.: unassigned: 00, true: 01, false: 10) values packed into
+ * larger cells. We'd need to actually benchmark this to see if the memory & 
+ * cache efficiency is worth the extra pack & unpack code.
  */
 #[deriving(PartialEq, Clone)]
 pub struct Solution {
@@ -244,6 +243,9 @@ impl fmt::Show for Term {
 
 pub struct Clause(pub Vec<Term>); 
 
+/**
+ * Deprecated
+ */
 #[deriving(Clone)]
 impl Clause {
     pub fn new() -> Clause {
@@ -315,16 +317,7 @@ pub type ClauseRef = Rc<Clause>;
 // ----------------------------------------------------------------------------
 
 /**
- * An expression consisting of multiple Clauses that are ANDed together. The 
- * clauses are reference counted so that they can appear in multiple iterations
- * of the expression as it gets progressively simplified during solving. 
- *
- * This structure is pretty inefficient, with both reference counting and 
- * indirection all over the place. A more efficient implemetation might store 
- * the master expression as a giant array with all the clauses packed together 
- * and referenced by slices during the actual solve.
- *
- * Get some benchmarking in first to see if its worth it, though. 
+ * An expression consisting of multiple Clauses that are ANDed together.
  */
  #[deriving(Clone)]
 pub struct Expression {
@@ -333,6 +326,11 @@ pub struct Expression {
     index: TrieMap<Vec<(uint, uint)>>
 }
 
+/**
+ * An iterator type for iterating over clauses in an expression. Turns the 
+ * internal representation of clauses (i.e. a collection of (offset, len) 
+ * pairs) into slices for external consumption.
+ */
 struct ClauseIterator<'a> { 
     data: &'a Vec<Term>,
     offsets: slice::Items<'a, (uint, uint)>
@@ -350,27 +348,32 @@ impl<'a> Iterator<&'a[Term]> for ClauseIterator<'a> {
 }
 
 impl Expression {
-    // pub fn new() -> Expression { Expression(vec![]) }
+    pub fn new() -> Expression { 
+        Expression {
+            data: Vec::new(),
+            offsets: Vec::new(),
+            index: TrieMap::new()
+        }
+    }
 
     pub fn from(clauses: &[&[Term]]) -> Expression {
-        let mut v = Vec::new();
-        let mut offsets = Vec::new();
-        let mut index : TrieMap<Vec<(uint, uint)>> = TrieMap::new();
+        let mut exp = Expression::new();
+
         for clause in clauses.iter() {
-            let slice = (v.len(), clause.len());
-            offsets.push(slice);
-            v.push_all(*clause);
+            let slice = (exp.data.len(), clause.len());
+            exp.offsets.push(slice);
+            exp.data.push_all(*clause);
 
             for v in clause.iter().map(|t| t.var()) {
-                if index.contains_key(&v) {
-                    index.find_mut(&v).unwrap().push(slice)
+                if exp.index.contains_key(&v) {
+                    exp.index.find_mut(&v).unwrap().push(slice)
                 }
                 else {
-                    index.insert(v, vec![slice]);
+                    exp.index.insert(v, vec![slice]);
                 }
             }
         }
-        Expression { data: v, offsets: offsets, index: index }
+        exp
     }
 
     pub fn clauses(&self) -> ClauseIterator {
@@ -427,4 +430,40 @@ impl fmt::Show for Expression {
         }
         write!(f, "]")
     }
+}
+
+#[test]
+fn get_clauses_containing_var_returns_only_clauses_containing_var() {
+    let sln = Expression::from(&[
+        &[Lit(1), Lit(2), Lit(3)],
+        &[Lit(3), Lit(4)],
+        &[Lit(1)],
+        &[Lit(4)]
+    ]);
+
+    let clauses : Vec<&[Term]> = sln.clauses_containing(1).collect();
+    assert!(clauses.len() == 2);
+    assert!(clauses.iter().find(|c| **c == [Lit(1), Lit(2), Lit(3)].as_slice()).is_some())
+    assert!(clauses.iter().find(|c| **c == [Lit(1)].as_slice()).is_some())
+}
+
+#[test]
+fn get_clauses_containing_var_handles_empty_expression() {
+    let sln = Expression::new();
+    let clauses : Vec<&[Term]> = sln.clauses_containing(1).collect();
+
+    assert!(clauses.len() == 0);
+}
+
+#[test]
+fn get_clauses_containing_var_handles_empty_result() {
+    let sln = Expression::from(&[
+        &[Lit(1), Lit(2), Lit(3)],
+        &[Lit(3), Lit(4)],
+        &[Lit(1)],
+        &[Lit(4)]
+    ]);
+    let clauses : Vec<&[Term]> = sln.clauses_containing(5).collect();
+
+    assert!(clauses.len() == 0);
 }
