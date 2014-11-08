@@ -142,6 +142,10 @@ impl<'a> Solution {
         *self.values.get_mut(var) = val;
     }
 
+    pub fn unset(&mut self, var: Var) {
+        *self.values.get_mut(var) = Unassigned;
+    }
+
     /**
      * Resets all variables in the supplied iterator to Unassigned.
      */
@@ -356,6 +360,9 @@ impl Expression {
         }
     }
 
+    /**
+     * Creates an expression from a set of collections of terms
+     */
     pub fn from(clauses: &[&[Term]]) -> Expression {
         let mut exp = Expression::new();
 
