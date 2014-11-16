@@ -143,7 +143,7 @@ impl<'a> Solution {
     }
 
     pub fn unset(&mut self, var: Var) {
-        *self.values.get_mut(var) = Unassigned;
+        *self.values.get_mut(var) = Unassigned
     }
 
     /**
@@ -231,6 +231,18 @@ impl PartialEq for Term {
 }
 
 impl Eq for Term {}
+
+impl PartialOrd for Term {
+    fn partial_cmp(&self, other: &Term) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Term {
+    fn cmp(&self, other: &Term) -> Ordering {
+        self.var().cmp(&other.var())
+    }
+}
 
 impl fmt::Show for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -367,18 +379,7 @@ impl Expression {
         let mut exp = Expression::new();
 
         for clause in clauses.iter() {
-            let slice = (exp.data.len(), clause.len());
-            exp.offsets.push(slice);
-            exp.data.push_all(*clause);
-
-            for v in clause.iter().map(|t| t.var()) {
-                if exp.index.contains_key(&v) {
-                    exp.index.find_mut(&v).unwrap().push(slice)
-                }
-                else {
-                    exp.index.insert(v, vec![slice]);
-                }
-            }
+            exp.add(*clause);
         }
         exp
     }
@@ -417,6 +418,24 @@ impl Expression {
             }
         }
         True
+    }
+
+    pub fn add(&mut self, clause: &[Term]) {
+        let slice = (self.data.len(), clause.len());
+        self.offsets.push(slice);
+        self.data.push_all(clause);
+
+        for var in clause.iter().map(|t| t.var()) {
+            let mut add_new = false;
+            match self.index.find_mut(&var) {
+                Some(v) => v.push(slice),
+                None => add_new = true
+            }
+
+            if add_new {
+                self.index.insert(var, vec![slice]);
+            }
+        }
     }
 }
 

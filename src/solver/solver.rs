@@ -1,5 +1,6 @@
 use std::collections::{TrieMap, TrieSet};
 use std::collections::trie::{Entries, Keys};
+use std::iter::{range_step};
 use std::fmt;
 use log;
 use solver::types::{SolutionValue, True, False, Unassigned};
@@ -213,6 +214,16 @@ impl ImplicationGraph {
     }
 }
 
+impl Collection for ImplicationGraph {
+    fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    fn len(&self) -> uint {
+        self.map.len()
+    }
+}
+
 #[test]
 fn implication_graph_duplicate_roots_are_not_added() {
     let mut g = ImplicationGraph::new();
@@ -266,7 +277,9 @@ fn learn_conflict_clause(v: Var, sln: &Solution, g: &ImplicationGraph) -> Vec<Te
         let term = match sln[*r] {
             True => Not(*r),
             False => Lit(*r),
-            Unassigned => { fail!("This should never happen"); Lit(0) }
+            Unassigned => {
+                let all_roots : Vec<uint> = g.get_roots(v); 
+                fail!("This should never happen (r: {}, all: {})", r, all_roots); Lit(0) }
         };
         clause.push(term)
     }
@@ -313,38 +326,31 @@ fn learn_clause_finds_expected_clause() {
 //
 // ----------------------------------------------------------------------------
 
-fn undo_decision(d: &Decision, sln: &mut Solution, vars: &mut VarSet) {
-    for k in d.implications.iter() {
-        sln.unset(*k);
-        vars.insert(*k);
-    }
-}
 
-// ----------------------------------------------------------------------------
-//
-// ----------------------------------------------------------------------------
-
-
-fn try_assignment(var: Var, val: SolutionValue, 
-                  unassigned_vars: &mut VarSet,
-                  exp: &Expression, 
-                  sln: &mut Solution) -> PropagationResult {
+fn try_assignment(var: Var, 
+                  val: SolutionValue, 
+                  state: &mut SolveState,
+                  exp: &Expression) -> PropagationResult {
 
     debug!("\tAttempting to set {} = {}", var, val);
 
+    let sln = &mut state.solution;
+    let vars = &mut state.unassigned_vars;
+    let g = &mut state.implications;
+    
     sln.set(var, val);
-    unassigned_vars.remove(&var);
+    vars.remove(&var);
 
-    match propagate(sln, var, val, exp) {
+    debug!("Solution: {}", sln);
+    debug!("Unset Vars: {}", vars);
+
+    match propagate(sln, var, val, exp, g) {
         // Yay - the assignment of var = val was valid. Time to update the 
         // bookkeeping. 
         Success (implications) => {
             // remove all variables that we assigned values to in this pass 
             // from the unassigned variables set.
-            for k in implications.iter() {
-                unassigned_vars.remove(k);
-            }
-
+            for k in implications.iter() { vars.remove(k); }
             Success (implications)
         },
 
@@ -352,8 +358,8 @@ fn try_assignment(var: Var, val: SolutionValue,
         // original state with an updated value to try  
         rval @ _ => {
             debug!("Assignment failed.");
-            sln.set(var, Unassigned);
-            unassigned_vars.insert(var);
+            sln.unset(var);
+            vars.insert(var);
             rval
         }
     }
@@ -367,13 +373,16 @@ fn trying_valid_assignment_on_new_var_succeeds() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
-    let mut vars : TrieSet = FromIterator::from_iter(
-        range(1,6).filter(|x| *x != 5));
-    let mut sln = Solution::new(6);
+    let mut state = SolveState { 
+        unassigned_vars: FromIterator::from_iter(range(1,6).filter(|x| *x != 5)),
+        solution: Solution::new(6),
+        implications: ImplicationGraph::new(),
+        stack: DecisionStack::new()
+    };
 
-    assert!(try_assignment(5, False, &mut vars, &exp, &mut sln).is_success());
-    assert!(sln[5] == False);
-    assert!(!vars.contains(&5));
+    assert!(try_assignment(5, False, &mut state, &exp).is_success());
+    assert!(state.solution[5] == False);
+    assert!(!state.unassigned_vars.contains(&5));
 }
 
 #[test]
@@ -385,68 +394,183 @@ fn trying_invalid_assignment_on_new_var_fails() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut vars : TrieSet = FromIterator::from_iter(range(1, 6));
-    let expected_vars = vars.clone();
-    let mut sln = Solution::new(6);
+    let mut state = SolveState::new(6);
+    let expected_vars = state.unassigned_vars.clone();
 
-    assert!(try_assignment(1, False, &mut vars, &exp, &mut sln).is_failure());
-    assert!(sln[1] == Unassigned);
-    assert!(vars == expected_vars, "Got {}", vars);
+    assert!(try_assignment(1, False, &mut state, &exp).is_failure());
+    assert!(state.solution[1] == Unassigned);
+    assert!(state.unassigned_vars == expected_vars,
+            "Got {}", state.unassigned_vars);
 }
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
-enum SolverMove { Continue, Backtrack, Retry }
+enum SolverMove { Continue, Backtrack, Retry (Var, SolutionValue) }
+
+struct SolveState {
+    unassigned_vars: VarSet,
+    implications: ImplicationGraph,
+    solution: Solution,
+    stack: DecisionStack
+}
+
+impl SolveState {
+    fn new(varcount: uint) -> SolveState {
+        SolveState {
+            unassigned_vars: FromIterator::from_iter(range(1, varcount+1)),
+            implications: ImplicationGraph::new(),
+            solution: Solution::new(varcount),
+            stack: DecisionStack::new()
+        }
+    }
+
+    fn has_unassigned_vars(&self) -> bool {
+        !self.unassigned_vars.is_empty()
+    }
+
+    fn undo_decision(&mut self, d: &Decision) {
+        debug!("Undoing {} = {}, ", d.var, d.value);
+        for k in d.implications.iter() {
+            debug!("Unsetting {}", k);
+            self.solution.unset(*k);
+            self.unassigned_vars.insert(*k);
+            self.implications.erase(*k);
+        }
+    }
+
+    /**
+     * Unwinds the state stack until all decisions affecting the variables in
+     * the supplied set have been undone. Fails hard if the unwinding tries to 
+     * go past the end of the stack.
+     */
+    fn unwind(&mut self, mut vars: VarSet) -> (Var, SolutionValue) {
+        debug!("Unwinding for: {}", vars);
+        loop {
+            match self.pop() {
+                None => fail!("Attempting to unwind an empty stack"),
+                Some(d) => {
+                    debug!("Implications of {} = {}: {}", d.var, d.value, d.implications);
+                    self.undo_decision(&d);
+                    for v in d.implications.iter() {
+                        vars.remove(v);
+                    }
+                    if vars.is_empty() {
+                        return (d.var, d.value)
+                    }
+                }
+            }
+        }
+    }
+
+    fn push(&mut self, var: Var, val: SolutionValue) {
+        self.stack.push(var, val)
+    }
+
+    fn pop(&mut self) -> Option<Decision> {
+        self.stack.pop()
+    }
+
+    fn mut_peek(&mut self) -> Option<&mut Decision> {
+        self.stack.mut_peek()
+    }
+}
+
+#[test]
+fn stack_unwound_to_expected_point() {
+    let mut state = SolveState {
+        unassigned_vars: TrieSet::new(),
+        implications: ImplicationGraph::new(),
+        solution: Solution::new(10),
+        stack: DecisionStack::new()
+    };
+
+    for x in range_step(1, 11, 2) {
+        state.push(x, True);
+        state.mut_peek().unwrap().implications = vec![x, x+1];
+        state.solution.set(x, True);
+        state.solution.set(x+1, False);
+        state.implications.add(x+1, x);
+    }
+
+    let missing_vars : TrieSet = FromIterator::from_iter(
+        [10u, 5u, 8u].iter().map(|x| *x));
+
+    let (var, val) = state.unwind(missing_vars);
+    assert!(var == 5);
+    assert!(val == True);
+
+    assert!(state.stack.len() == 2);
+    
+    let expected_vars : VarSet = FromIterator::from_iter(range(5u, 11u));
+    assert!(state.unassigned_vars == expected_vars, 
+            "Expected {}, got {}", expected_vars, state.unassigned_vars);
+
+    assert!(range(1, 5).all(|n| state.solution[n] != Unassigned));
+    assert!(range(5, 11).all(|n| state.solution[n] == Unassigned));
+    assert!(range(5, 11).all(|n| state.implications.get_roots(n) == vec![]));
+
+    assert!(state.stack.len() == 2);
+}
 
 /**
  * The main solver routine. Horribly side-effecting, but only internally.
  */
-pub fn solve(e: &Expression, 
+pub fn solve(exp: &Expression, 
              varcount: uint, 
              initial_sln: Solution) -> Option<Solution> {
-    let mut unassigned_vars = scan_unassigned_vars(varcount, &initial_sln);
-    let mut stack = DecisionStack::new();
-    let mut sln = initial_sln.clone(); 
+    let mut state = SolveState::new(varcount);
     let mut next_move = Continue;
+    let mut e = exp.clone();
 
-    while !unassigned_vars.is_empty() {
+    while state.has_unassigned_vars() {
         let (var, val) = match next_move {
-            Continue => (pick_var(&mut unassigned_vars), False),
+            Continue => (pick_var(&mut state.unassigned_vars), False),
             Backtrack => {
                 debug!("Attempting to backtrack");
-                match stack.pop() {
+                match state.pop() {
                     None => {
                         debug!("No solution found");
                         return None
                     },
                     Some (d) =>  {
-                        undo_decision(&d, &mut sln, &mut unassigned_vars);
+                        state.undo_decision(&d);
                         if d.value == True { continue; };
-                        next_move = Continue;
                         (d.var, next_val(d.value))
                     }
                 }
             },
-            Retry => { fail!("Shouldn't happen yet"); (0u, Unassigned) }
+            Retry (x, v) => (x, v) 
         };
     
-        debug!("Stack depth: {}", stack.len());
-        stack.push(var, val);
+        debug!("Stack depth: {}", state.stack.len());
+        state.push(var, val);
 
-        match try_assignment(var, val, &mut unassigned_vars, e, &mut sln) {
+        match try_assignment(var, val, &mut state, &e) {
             Success (implications) => {
-                stack.mut_peek().unwrap().implications = implications;
+                match state.mut_peek() {
+                    Some(d) => d.implications = implications,
+                    None => fail!("Empty decision stack")
+                }
                 next_move = Continue;
             },
-            EvaluatesToFalse | Contradiction (_) => {
+
+            Contradiction (new_clauses, missing_vars) => {
+                for c in new_clauses.iter() {
+                    e.add(c.as_slice());
+                }
+                let (var_p, val_p) = state.unwind(missing_vars);
+                next_move = Retry(var_p, val_p);
+            },
+
+            EvaluatesToFalse => {
                 next_move = Backtrack;
             }
         }
     }
 
-    Some(sln)
+    Some(state.solution)
 }
 
 #[test]
@@ -467,7 +591,16 @@ fn solver_completes() {
         Some(sln) => {
             debug!("Solution: {}", sln);
 
-            assert!(range(1u, 8u).all(|x| sln[x] != Unassigned));
+            println!("+++ {}, {}", sln, range(1u, 8u).all(|x| {
+                println!(">>> sln[{}] == {} (!= Unassigned? {}) ",
+                         x, sln[x], sln[x] != Unassigned); 
+                sln[x] != Unassigned
+            }));
+
+            assert!(range(1u, 8u).all(|x| sln[x] != Unassigned), 
+                    "Expected all values to be assigned, got {} instead", 
+                    sln);
+
             assert!(exp.apply(&sln) == True);
             assert!(sln[1] == True); // this at least must be true
 
@@ -583,9 +716,13 @@ enum PropagationResult {
     EvaluatesToFalse,
 
     /**
-     * 
+     * Contradiction detected during propagation. Returns both the conflict 
+     * expression and the variables that need to be reset before a retry can 
+     * occur. (We need the reamaining ones returned as some of the terms in 
+     * the conflict expression may have already been reset by cleanup code in 
+     * the propagation routine.)
      */
-    Contradiction (uint),
+    Contradiction (Vec<Vec<Term>>, VarSet),
 
     /**
      * (implications) where
@@ -611,14 +748,26 @@ impl PropagationResult {
 /**
  *
  */
-fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Expression) -> PropagationResult {
+fn propagate(sln: &mut Solution, 
+             seed_var: Var, 
+             seed_val: SolutionValue, 
+             e: &Expression,
+             g: &mut ImplicationGraph) -> PropagationResult {
+
     let mut implications = ImplicationMap::new();
     let mut queue : Vec<(Var, SolutionValue)> = Vec::new();
+    let mut conflicts = TrieSet::new();
+    let mut conflict_clauses : Vec<Vec<Term>> = Vec::new(); 
+    let mut clause_vars = TrieSet::new();
+
     queue.push((seed_var, seed_val));
     implications.add(seed_var, seed_val);
 
     while !queue.is_empty() {
         let (var, val) = queue.pop().unwrap();
+        if conflicts.contains(&var) {
+            continue;
+        }
 
         debug!("\tChecking implications of setting {} = {}", var, val)
 
@@ -630,6 +779,10 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
                     debug!("\t\tFound unit clause {}, term of interest is {}", clause, term)
                     let v = term.var();
 
+                    if conflicts.contains(&v) {
+                        continue;
+                    }
+
                     // deduce value
                     let deduced_value = match term {
                         Lit (_) => True,
@@ -637,10 +790,13 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
                     };
 
                     debug!("\t\tDeduced that {} = {}", v, deduced_value);
+                    g.add_from_clause(v, clause);
 
                     // check for a contradiction - have we aleady deduced that 
                     // this variable must have a different value?
-                    debug!("\t\tExisting implication for {} is {}", v, implications.value_of(v));
+                    debug!("\t\tExisting implication for {} is {} (Unassigned -> None)", 
+                           v, implications.value_of(v));
+
                     match implications.value_of(v) {
                         Unassigned => { 
                             queue.push((v, deduced_value));
@@ -649,8 +805,16 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
 
                         x if x != deduced_value => { 
                             debug!("\t\tDetected contradiction on {}!", v);
-                            sln.unset_all(implications.vars());
-                            return Contradiction(v) 
+
+                            let conflict_clause = learn_conflict_clause(v, sln, g);
+                            debug!("\t\tLearned {}", conflict_clause);
+                            
+                            sln.unset(v);
+
+                            clause_vars.extend(
+                                conflict_clause.iter().map(|t| t.var()));
+                            conflict_clauses.push(conflict_clause);
+                            conflicts.insert(v);
                         },
 
                         _ => { /* value is consistent, all is well */ }
@@ -665,8 +829,11 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
                     // oh, dear. All variables in the term have values and the
                     // clause evaluates to false. Bail out and let the caller 
                     // know that this can't possibly be the right answer.
-                    debug!("\t\tClause {} evaluates to false. Ooops.", clause); 
-                    sln.unset_all(implications.vars());
+                    debug!("\t\tClause {} evaluates to false. Ooops.", clause);
+                    for v in implications.vars() {
+                        sln.unset(v);
+                        g.erase(v);
+                    }
                     return EvaluatesToFalse
                 },
 
@@ -677,14 +844,25 @@ fn propagate(sln: &mut Solution, seed_var: Var, seed_val: SolutionValue, e: &Exp
         }
     }
 
-    Success (implications.vars().collect())
+    if conflict_clauses.is_empty() {
+        Success (implications.vars().collect())
+    }
+    else {
+        for v in implications.vars() {
+            sln.unset(v);
+            g.erase(v);
+            clause_vars.remove(&v);
+        }
+        Contradiction(conflict_clauses, clause_vars)
+    }
 }
 
 #[test]
 fn propagation_deduces_true_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Lit(3), Lit(4)]]);
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
-    match propagate(&mut sln, 4, False, &exp) {
+    let mut g = ImplicationGraph::new();
+    match propagate(&mut sln, 4, False, &exp, &mut g) {
         Success (mut implications) => {
             implications.sort();
             assert!(implications.as_slice() == &[3u, 4u], 
@@ -700,7 +878,8 @@ fn propagation_deduces_true_value() {
 fn propagation_deduces_false_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Not(3), Lit(4)]]);
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
-    match propagate(&mut sln, 4, False, &exp) {
+    let mut g = ImplicationGraph::new();
+    match propagate(&mut sln, 4, False, &exp, &mut g) {
         Success (mut implications) => {
             implications.sort();
             assert!(implications.as_slice() == &[3u, 4u], 
@@ -720,9 +899,15 @@ fn propagation_detects_contradictions() {
     ]);
 
     let mut sln = Solution::from(3, &[(1, False)]);
+    let mut g = ImplicationGraph::new();
     
-    match propagate(&mut sln, 2, False, &exp) {
-        Contradiction (n) => assert!(n == 3, "Expected a contractiction of variable #3"),
+    match propagate(&mut sln, 2, False, &exp, &mut g) {
+        Contradiction (mut c, mut vs) => {
+            c.sort();
+            assert!(c.as_slice() == &[vec![Lit(1), Lit(2)]], 
+                    "Expected a conflic clause like [1, 2], got {}", 
+                    c);
+        },
         other => fail!("Unexpected result from propagate(): {}", other)
     }
 
@@ -739,9 +924,12 @@ fn propagation_detects_evaluation_to_false() {
     ]);
 
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
+    let mut g = ImplicationGraph::new();
 
-    match propagate(&mut sln, 3, False, &exp) {
+    match propagate(&mut sln, 3, False, &exp, &mut g) {
         EvaluatesToFalse => {},
         other => fail!("Unexpected result from propagate(): {}", other)
     }
+
+    assert!(g.is_empty());
 }
