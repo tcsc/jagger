@@ -1,18 +1,21 @@
 use std::io;
-use std::num;
-use solver::{Expression, Term, Lit, Not};
+use std::num::{self, SignedInt};
+use std::str::FromStr;
+use solver::{Expression, Term};
+use solver::SolutionValue::{True, False, Unassigned};
+use solver::Term::{Lit, Not};
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
 pub struct Problem {
-    pub varcount: uint,
+    pub varcount: usize,
     pub expression: Expression
 }
 
 impl Problem {
-    pub fn new(varcount: uint, clauses: &[&[Term]]) -> Problem {
+    pub fn new(varcount: usize, clauses: &[&[Term]]) -> Problem {
         Problem { 
             varcount: varcount, 
             expression: Expression::from(clauses)
@@ -24,18 +27,28 @@ impl Problem {
 //
 // ----------------------------------------------------------------------------
 
-#[deriving(Show, PartialEq)]
+#[derive(Show, PartialEq)]
 pub enum DimacsError {
     IoFailure (io::IoError),
     ParseFailure (String)
 }
 
-fn read_int(s: &str) -> Result<int, DimacsError> {
-    match from_str(s) {
+fn parse_failure<T>(s: String) -> Result<T, DimacsError> { 
+    Err(DimacsError::ParseFailure(s)) 
+}
+
+fn io_failure<T>(err: io::IoError) -> Result<T, DimacsError> {
+    Err(DimacsError::IoFailure(err))
+}
+
+/**
+ * Reads a signed integer from the supplied string. 
+ */
+fn read_int(s: &str) -> Result<isize, DimacsError> {
+    match FromStr::from_str(s) {
         Some(n) => Ok(n),
         None => {
-            let msg = format!("Not an integer: \"{}\"", s);
-            Err(ParseFailure(msg))
+            parse_failure(format!("Not an integer: \"{}\"", s))
         }
     }
 }
@@ -45,29 +58,27 @@ fn read_clause(s: &str) -> Result<Vec<Term>, DimacsError> {
     for item in s.trim().split(' ') {
         if item.is_empty() { continue; }
         match try!(read_int(item)) {
-            n if n > 0 => clause.push(Lit(n as uint)),
-            n if n < 0 => clause.push(Not(num::abs(n) as uint)),
+            n if n > 0 => clause.push(Lit(n as usize)),
+            n if n < 0 => clause.push(Not(n.abs() as usize)),
             n => { break; }
         };
     }
     Ok(clause)
 }
 
-fn read_problem_header(s: &str) -> Result<(int, int), DimacsError> {
+fn read_problem_header(s: &str) -> Result<(isize, isize), DimacsError> {
     let parts : Vec<&str> = s.split(' ').collect();
     match parts.len() {
         4 => { 
-            if *parts[1] != "cnf" { 
-                let msg = format!("expected \"cnf\", got \"{}\"", parts.get(1));
-                return Err(ParseFailure(msg)) 
+            if parts[1] != "cnf" {
+                return parse_failure(format!("expected \"cnf\", got \"{:?}\"", parts.get(1)))
             }
             let vars = try!(read_int(parts[2]));
             let clauses = try!(read_int(parts[3]));
             Ok((vars, clauses))
         }
         _ => {
-            let msg = format!("Malformed header: {}", s); 
-            Err(ParseFailure(msg)) 
+            parse_failure(format!("Malformed header: {:?}", s))
         }
     }
 }
@@ -80,24 +91,24 @@ fn reading_problem_header_returns_counts() {
 #[test]
 fn problem_header_with_bad_type_returns_error() {
     match read_problem_header("p wtf 42 128") {
-        Err(ParseFailure(_)) => {},
-        _ => fail!("Expected parsing to fail")
+        Err(DimacsError::ParseFailure(_)) => {},
+        _ => panic!("Expected parsing to fail")
     }
 }
 
 #[test]
 fn problem_header_with_bad_varcount_returns_error() {
     match read_problem_header("p cnf narf 128") {
-        Err(ParseFailure(_)) => {},
-        _ => fail!("Expected parsing to fail")
+        Err(DimacsError::ParseFailure(_)) => {},
+        _ => panic!("Expected parsing to fail")
     }
 }
 
 #[test]
 fn problem_header_with_bad_clause_count_returns_error() {
     match read_problem_header("p cnf 42 zort") {
-        Err (ParseFailure(_)) => {},
-        _ => fail!("Expected parsing to fail")
+        Err (DimacsError::ParseFailure(_)) => {},
+        _ => panic!("Expected parsing to fail")
     }
 }
 
@@ -120,14 +131,14 @@ pub fn read<B: io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
                     }
                 }
             },
-            Err(err) => return Err(IoFailure(err))
+            Err(err) => return io_failure(err)
         }
     } 
 
     let slices : Vec<&[Term]> = clauses.iter()
                                        .map(|v| v.as_slice())
                                        .collect(); 
-    Ok(Problem::new(nvars as uint, slices.as_slice()))
+    Ok(Problem::new(nvars as usize, slices.as_slice()))
 }
 
 #[config(test)]
@@ -138,12 +149,12 @@ fn make_buffer(lines: &[&str]) -> io::MemReader {
             n => {}
         }
     }
-    io::MemReader::new( text.unwrap() )
+    io::MemReader::new( text.into_inner() )
 }
 
 #[test]
 fn dimacs_reader() {
-    let mut reader = make_buffer([
+    let mut reader = make_buffer(&[
         "\n",
         "c\n",
         "c comment\n",
@@ -155,20 +166,20 @@ fn dimacs_reader() {
     ]);
 
     let problem = read(&mut reader).unwrap();
-    assert!(problem.varcount == 5, "Expected varcount 5, got {}", problem.varcount);
+    assert!(problem.varcount == 5, "Expected varcount 5, got {:?}", problem.varcount);
 
     assert!(problem.expression.clauses().count() == 3);
     let mut iter = problem.expression.clauses();
     let c1 = iter.next().unwrap();
-    assert!(c1 == [Lit(1), Not(5), Lit(4)], "Expected [1, ~5, 4], got {}", c1);
+    assert!(c1.terms() == [Lit(1), Not(5), Lit(4)], "Expected [1, ~5, 4], got {:?}", c1);
 
     let c2 = iter.next().unwrap();
-    assert!(c2 == [Not(1), Lit(5), Lit(3), Lit(4)],
-        "Expected [~1, 5, 3, 4], got {}", c2);
+    assert!(c2.terms() == [Not(1), Lit(5), Lit(3), Lit(4)],
+        "Expected [~1, 5, 3, 4], got {:?}", c2);
 
     let c3 = iter.next().unwrap();
-    assert!(c3 == [Not(3), Not(4)],
-        "Expected [~3, ~4], got {}", c3);
+    assert!(c3.terms() == [Not(3), Not(4)],
+        "Expected [~3, ~4], got {:?}", c3);
 
     assert!(iter.next() == None);
 

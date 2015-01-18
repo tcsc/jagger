@@ -1,20 +1,39 @@
 use std::cmp;
+use std::cmp::Ordering;
 use std::fmt;
+use std::iter::FromIterator;
+use self::VersionExpression::*;
 
-#[deriving(Clone)]
+pub type Ordinal = usize; 
+
+#[derive(Clone, Hash)]
 pub enum VersionExpression {
     Any,
-    Eq (uint),
-    Gt (uint),
-    Gte (uint),
-    Lt (uint),
-    Lte (uint),
+    Eq (Ordinal),
+    Gt (Ordinal),
+    Gte (Ordinal),
+    Lt (Ordinal),
+    Lte (Ordinal),
     And (Box<VersionExpression>, Box<VersionExpression>),
     Or (Box<VersionExpression>, Box<VersionExpression>),
 }
 
+pub fn eq(n: Ordinal) -> VersionExpression { VersionExpression::Eq(n) }
+pub fn gt(n: Ordinal) -> VersionExpression { VersionExpression::Gt(n) }
+pub fn gte(n: Ordinal) -> VersionExpression { VersionExpression::Gte(n) }
+pub fn lt(n: Ordinal) -> VersionExpression { VersionExpression::Lt(n) }
+pub fn lte(n: Ordinal) -> VersionExpression { VersionExpression::Lte(n) }
+
+pub fn and(a: VersionExpression, b: VersionExpression) -> VersionExpression { 
+    VersionExpression::And(box a, box b) 
+}
+
+pub fn or(a: VersionExpression, b: VersionExpression) -> VersionExpression { 
+    VersionExpression::Or(box a, box b)
+}
+
 impl VersionExpression {
-    fn matches(&self, ver: uint) -> bool {
+    fn matches(&self, ver: Ordinal) -> bool {
         match *self {
             Any => true,
             Eq(n) => n == ver,
@@ -47,13 +66,13 @@ impl fmt::Show for VersionExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Any => write!(f, "any"),
-            Eq(n) => write!(f, "= {}", n),
-            Gt(n) => write!(f, "> {}", n),
-            Gte(n) => write!(f, ">= {}", n),
-            Lt(n) => write!(f, "< {}", n),
-            Lte(n) => write!(f, "<= {}", n),
-            And(ref a, ref b) => write!(f, "{} && {}", a, b),
-            Or(ref a, ref b) => write!(f, "{} || {}", a, b)
+            Eq(n) => write!(f, "= {:?}", n),
+            Gt(n) => write!(f, "> {:?}", n),
+            Gte(n) => write!(f, ">= {:?}", n),
+            Lt(n) => write!(f, "< {:?}", n),
+            Lte(n) => write!(f, "<= {:?}", n),
+            And(ref a, ref b) => write!(f, "{:?} && {:?}", a, b),
+            Or(ref a, ref b) => write!(f, "{:?} || {:?}", a, b)
         }
     }
 }
@@ -64,7 +83,7 @@ impl cmp::Eq for VersionExpression {
 
 #[test]
 fn version_expression_any()  {
-    let v = Any;
+    let v = VersionExpression::Any;
     assert!(v.matches(7));
     assert!(v.matches(42));
     assert!(v.matches(48));
@@ -73,7 +92,7 @@ fn version_expression_any()  {
 
 #[test]
 fn version_expression_eq()  {
-    let v = Eq(42);
+    let v = eq(42);
     assert!(!v.matches(7));
     assert!(v.matches(42));
     assert!(!v.matches(48));
@@ -81,7 +100,7 @@ fn version_expression_eq()  {
 
 #[test]
 fn version_expression_gt()  {
-    let v = Gt(42);
+    let v = gt(42);
     assert!(!v.matches(7));
     assert!(!v.matches(42));
     assert!(v.matches(48));
@@ -89,7 +108,7 @@ fn version_expression_gt()  {
 
 #[test]
 fn version_expression_gte()  {
-    let v = Gte(42);
+    let v = gte(42);
     assert!(!v.matches(7));
     assert!(v.matches(42));
     assert!(v.matches(48));
@@ -97,7 +116,7 @@ fn version_expression_gte()  {
 
 #[test]
 fn version_expression_lt()  {
-    let v = Lt(42);
+    let v = lt(42);
     assert!(v.matches(7));
     assert!(!v.matches(42));
     assert!(!v.matches(48));
@@ -105,7 +124,7 @@ fn version_expression_lt()  {
 
 #[test]
 fn version_expression_lte()  {
-    let v = Lte(42);
+    let v = lte(42);
     assert!(v.matches(7));
     assert!(v.matches(42));
     assert!(!v.matches(48));
@@ -113,7 +132,7 @@ fn version_expression_lte()  {
 
 #[test]
 fn version_expression_boolean_and()  {
-    let v = And(box Gt(42), box Lt(44)); 
+    let v = and(gt(42), lt(44)); 
     assert!(v.matches(43));
     assert!(!v.matches(41));
     assert!(!v.matches(42));
@@ -123,7 +142,7 @@ fn version_expression_boolean_and()  {
 
 #[test]
 fn version_expression_boolean_or()  {
-    let v = Or(box Eq(1), box Eq(163)); 
+    let v = or(eq(1), eq(163)); 
     assert!(v.matches(1));
     assert!(!v.matches(2));
 
@@ -135,7 +154,7 @@ fn version_expression_boolean_or()  {
 /**
  * A package name and the version of that package required.
  */
-#[deriving(Clone, Eq)]
+#[derive(Clone, Eq, Hash)]
 pub struct PkgExp {
     name: String,
     version: VersionExpression 
@@ -158,7 +177,7 @@ impl PartialEq for PkgExp {
 
 impl fmt::Show for PkgExp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}", self.name, self.version)
+        write!(f, "{:?} {:?}", self.name, self.version)
     }
 }
 
@@ -166,7 +185,7 @@ impl fmt::Show for PkgExp {
 // Package - An abstract representation of a package
 // ----------------------------------------------------------------------------
 
-#[deriving(Show, Eq, PartialEq)]
+#[derive(Show, Eq, PartialEq, Hash, Clone)]
 pub enum State {
     Installed,
     Available,
@@ -175,6 +194,7 @@ pub enum State {
 /**
  * The metadata for a given package at a given version.
  */
+ #[derive(Hash)]
 pub struct Package {
     /**
      *
@@ -188,7 +208,7 @@ pub struct Package {
      * solver doesn't have care about the specifics of versioning in a given 
      * package format. 
      */
-    ordinal: uint,
+    ordinal: Ordinal,
 
     state: State,
 
@@ -197,15 +217,15 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn new_installed(name: &str, ordinal: uint) -> Package {
-        Package::new(name, ordinal, Installed)
+    pub fn new_installed(name: &str, ordinal: Ordinal) -> Package {
+        Package::new(name, ordinal, State::Installed)
     }
 
-    pub fn new_available(name: &str, ordinal: uint) -> Package {
-        Package::new(name, ordinal, Available)
+    pub fn new_available(name: &str, ordinal: Ordinal) -> Package {
+        Package::new(name, ordinal, State::Available)
     }
 
-    pub fn new(name: &str, ordinal: uint, state: State) -> Package {
+    pub fn new(name: &str, ordinal: Ordinal, state: State) -> Package {
         Package { 
             name: String::from_str(name),
             ordinal: ordinal,
@@ -247,7 +267,7 @@ impl Package {
 
     pub fn name<'a>(&'a self) -> &'a str { self.name.as_slice() }
 
-    pub fn ordinal(&self) -> uint { self.ordinal }
+    pub fn ordinal(&self) -> Ordinal { self.ordinal }
 }
 
 impl PartialEq for Package {
@@ -263,9 +283,9 @@ impl PartialEq for Package {
 impl cmp::Eq for Package {}
 
 impl PartialOrd for Package {
-    fn partial_cmp(&self, other: &Package) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Package) -> Option<cmp::Ordering> {
         match self.name.cmp(&other.name) {
-            Equal => Some(self.ordinal.cmp(&other.ordinal)),
+            Ordering::Equal => Some(self.ordinal.cmp(&other.ordinal)),
             rval => Some(rval)
         }
     }
@@ -274,16 +294,16 @@ impl PartialOrd for Package {
 impl Ord for Package {
     fn cmp(&self, other: &Package) -> Ordering {
         if self.name < other.name {
-            Less
+            Ordering::Less
         }
         else if self.name > other.name {
-            Greater
+            Ordering::Greater
         } 
         else {
             match self.ordinal {
-                n if n < other.ordinal => Less,
-                n if n > other.ordinal => Greater,
-                _ => Equal
+                n if n < other.ordinal => Ordering::Less,
+                n if n > other.ordinal => Ordering::Greater,
+                _ => Ordering::Equal
             }
         }
     }
@@ -294,7 +314,7 @@ impl Clone for Package {
         Package {
             name: self.name.clone(),
             ordinal: self.ordinal,
-            state: self.state,
+            state: self.state.clone(),
             requires: self.requires.clone(),
             conflicts: self.conflicts.clone()
         }
@@ -333,7 +353,7 @@ impl PkgDb {
         self.packages.push_all(packages);
     }
 
-    pub fn iter<'a>(&'a self) -> ::std::slice::Items<'a, Package> {
+    pub fn iter<'a>(&'a self) -> ::std::slice::Iter<'a, Package> {
         self.packages.iter()
     }
 
@@ -344,7 +364,7 @@ impl PkgDb {
     pub fn installed_packages<'a>(&'a self) -> Vec<&'a Package> {
         self.packages
             .iter()
-            .filter(|p| p.state == Installed)
+            .filter(|p| p.state == State::Installed)
             .collect()
     }
 
@@ -363,32 +383,39 @@ impl PkgDb {
 #[test]
 fn pkgdb_select_non_existant_package_name_returns_empty_vector() {
     let db = PkgDb::new();
-    assert!(db.select("nonesuch", Any).as_slice() == [])
+    assert!(db.select("nonesuch", VersionExpression::Any).is_empty())
+}
+
+#[cfg(test)]
+fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where 
+    F: FnMut(usize) -> Package 
+{
+    FromIterator::from_iter(range(0, n).map(f))
 }
 
 #[test]
 fn pkgdb_empty_select_returns_empty_vector() {
     let mut db = PkgDb::new();
-    db.add_packages(Vec::from_fn(5, |n| {
-        Package::new("alpha", n, Available)
+    db.add_packages(pkg_vec(5, |n| {
+        Package::new("alpha", n, State::Available)
     }).as_slice());
-    assert!(db.select("nonesuch", Gt(10)).as_slice() == [])
+    assert!(db.select("nonesuch", gt(10)).is_empty())
 }
 
 #[test]
 fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
-    db.add_packages(Vec::from_fn(5, |n| { 
-        Package::new("alpha", n, Available)
+    db.add_packages(pkg_vec(5, |n| { 
+        Package::new("alpha", n, State::Available)
     }).as_slice());
-    db.add_packages(Vec::from_fn(10, |n| {
-        Package::new("beta", n, Available)
+    db.add_packages(pkg_vec(10, |n| {
+        Package::new("beta", n, State::Available)
     }).as_slice());
 
-    let data = Vec::from_fn(4, |n| Package::new_available("beta", n + 6));
+    let data = pkg_vec(4, |n| Package::new_available("beta", n + 6));
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
-    let actual = db.select("beta", Gte(6));
+    let actual = db.select("beta", gte(6));
 
     assert!(expected.as_slice() == actual.as_slice(), 
-            "expected: {}, got: {}", expected, actual);
+            "expected: {:?}, got: {:?}", expected, actual);
 }

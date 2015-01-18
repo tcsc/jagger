@@ -1,19 +1,23 @@
-use std::collections::{TrieMap};
 use std::fmt;
 use std::ops;
-use std::rc::Rc;
+use std::cmp;
 use std::slice;
+use std::iter::{FromIterator, repeat};
+use std::collections::HashMap;
+
+use self::SolutionValue::{True, False, Unassigned};
+use self::Term::{Lit, Not};
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
-pub type Var = uint;
+pub type Var = usize;
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
-#[deriving(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Show, Clone, Copy)]
 pub enum SolutionValue { Unassigned, True, False }
 
 impl SolutionValue {
@@ -26,7 +30,7 @@ impl SolutionValue {
 
     fn as_bool(&self) -> bool {
         match *self {
-            Unassigned => fail!("Expected True or False"),
+            Unassigned => panic!("Expected True or False"),
             True => true,
             False => false
         }
@@ -39,17 +43,18 @@ impl SolutionValue {
  * resulting truth table looks something like
  *
  *  OR         | True | False      | Unassigned
-    ===========================================
+ *  ===========================================
  *  True       | True | True       | True
  *  False      | True | False      | Unassigned
  *  Unassigned | True | Unassigned | Unassigned
  */
-impl BitOr<SolutionValue, SolutionValue> for SolutionValue {
-    fn bitor(&self, rhs: &SolutionValue) -> SolutionValue {
-        if *self == True || *rhs == True { 
+impl ops::BitOr for SolutionValue {
+    type Output = SolutionValue;
+    fn bitor(self, rhs: SolutionValue) -> SolutionValue {
+        if self == True || rhs == True { 
             True
         }
-        else if *self == Unassigned || *rhs == Unassigned {
+        else if self == Unassigned || rhs == Unassigned {
             Unassigned
         }
         else {
@@ -60,7 +65,7 @@ impl BitOr<SolutionValue, SolutionValue> for SolutionValue {
 
 #[test]
 fn unassigned_solution_value_propagates_through_or() {
-    assert!((Unassigned | True) == True, "Expected True, got {}", Unassigned | True);
+    assert!((Unassigned | True) == True, "Expected True, got {:?}", Unassigned | True);
     assert!((Unassigned | False) == Unassigned);
     assert!((True | Unassigned) == True);
     assert!((False | Unassigned) == Unassigned);
@@ -74,9 +79,10 @@ fn oring_assigned_solution_values_behaves_like_boolean() {
     assert!((False | False) == False);
 }
 
-impl ops::Not<SolutionValue> for SolutionValue {
-    fn not(&self) -> SolutionValue {
-        match *self {
+impl ops::Not for SolutionValue {
+    type Output = SolutionValue;
+    fn not(self) -> SolutionValue {
+        match self {
             Unassigned => Unassigned,
             True => False,
             False => True
@@ -111,7 +117,7 @@ fn not_assigned_solution_behaves_like_boolean() {
  * larger cells. We'd need to actually benchmark this to see if the memory & 
  * cache efficiency is worth the extra pack & unpack code.
  */
-#[deriving(PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct Solution {
     values: Vec<SolutionValue>
 }
@@ -120,14 +126,16 @@ impl<'a> Solution {
     /**
      * Creates an empty solution
      */
-    pub fn new(n: uint) -> Solution { 
-        Solution { values: Vec::from_elem(n+1, Unassigned) }
+    pub fn new(n: usize) -> Solution {
+        Solution { 
+            values: FromIterator::from_iter(repeat(Unassigned).take(n+1)) 
+        }
     }
 
     /**
      * Creates a solution from predefined values encoded as a (variable, value) pair
      */
-    pub fn from(varcount: uint, values: &[(Var, SolutionValue)]) -> Solution {
+    pub fn from(varcount: usize, values: &[(Var, SolutionValue)]) -> Solution {
         let mut s = Solution::new(varcount);
         for &(var, val) in values.iter() {
             s.set(var, val)
@@ -139,17 +147,17 @@ impl<'a> Solution {
      * Sets a value in the solution
      */
     pub fn set(&mut self, var: Var, val: SolutionValue) {
-        *self.values.get_mut(var) = val;
+        self.values[var] = val;
     }
 
     pub fn unset(&mut self, var: Var) {
-        *self.values.get_mut(var) = Unassigned
+        self.values[var] = Unassigned
     }
 
     /**
      * Resets all variables in the supplied iterator to Unassigned.
      */
-    pub fn unset_all<I:Iterator<Var>>(&mut self, mut iter: I) {
+    pub fn unset_all<I: Iterator<Item=Var>>(&mut self, mut iter: I) {
         for var in iter {
             self.set(var, Unassigned)
         }
@@ -186,13 +194,15 @@ impl fmt::Show for Solution {
             }
 
             if first  { first = false; } else { try!(write!(f, ", ")); }
-            try!(write!(f, "{}: {}", k, v));
+            try!(write!(f, "{:?}: {:?}", k, v));
         }
         write!(f, "]")
     }
 }
 
-impl Index<Var, SolutionValue> for Solution {
+impl ops::Index<Var> for Solution {
+    type Output = SolutionValue;
+
     fn index<'a>(&'a self,  v: &Var) -> &'a SolutionValue {
         self.values.index(v)
     }
@@ -202,11 +212,11 @@ impl Index<Var, SolutionValue> for Solution {
 //
 // ----------------------------------------------------------------------------
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub enum Term { Lit(Var), Not(Var) }
 
 impl Term {
-    pub fn var(&self) -> uint {
+    pub fn var(&self) -> Var {
         match *self {
             Lit(v) => v,
             Not(v) => v
@@ -233,13 +243,13 @@ impl PartialEq for Term {
 impl Eq for Term {}
 
 impl PartialOrd for Term {
-    fn partial_cmp(&self, other: &Term) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Term) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Term {
-    fn cmp(&self, other: &Term) -> Ordering {
+    fn cmp(&self, other: &Term) -> cmp::Ordering {
         self.var().cmp(&other.var())
     }
 }
@@ -257,43 +267,43 @@ impl fmt::Show for Term {
 //
 // ----------------------------------------------------------------------------
 
-pub struct Clause(pub Vec<Term>); 
 
-/**
- * Deprecated
- */
-#[deriving(Clone)]
+#[derive(Clone)]
+pub struct Clause {
+    watch_a: isize,  // merge into a 2-element array
+    watch_b: isize,
+    terms: Vec<Term>
+}
+
 impl Clause {
     pub fn new() -> Clause {
-        Clause(vec![])
+        Clause { watch_a: -1, watch_b: -1, terms: vec![]}
     }
 
     pub fn from(terms: &[Term]) -> Clause {
-        let mut r = Clause::new();
-        for t in terms.iter() {
-            r.add(*t)
-        };
-        r
+        let mut v : Vec<Term> = Vec::with_capacity(terms.len());
+        v.push_all(terms);
+
+        let a = if v.len() >= 1 { 0 } else { -1 };
+        let b = if v.len() >= 2 { 1 } else { -1 };
+        Clause { watch_a: a, watch_b: b, terms: v }
+    }
+
+    pub fn len(&self) -> usize {
+        self.terms.len()
     }
 
     pub fn add(&mut self, t: Term) {
-        let Clause(ref mut r) = *self;
-        r.push(t.clone())
+        self.terms.push(t)
     }
 
-    pub fn terms<'a>(&'a self) -> slice::Items<'a, Term> {
-        let Clause(ref r) = *self;
-        r.iter()   
-    }
-
-    pub fn len(&self) -> uint {
-        let Clause(ref r) = *self;
-        r.len()
+    pub fn terms(&self) -> &[Term] {
+        self.terms.as_slice()
     }
 }
 
 impl FromIterator<Term> for Clause {
-    fn from_iter<T: Iterator<Term>>(mut terms: T) -> Clause {
+    fn from_iter<I: Iterator<Item=Term>>(mut terms: I) -> Clause {
         let mut r = Clause::new();
         for t in terms {
             r.add(t.clone())
@@ -302,20 +312,11 @@ impl FromIterator<Term> for Clause {
     }
 }
 
-impl PartialEq for Clause {
-    fn eq(&self, other: &Clause) -> bool {
-        let Clause(ref me) = *self;
-        let Clause(ref it) = *other;
-        me == it
-    }
-}
-
 impl fmt::Show for Clause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Clause(ref terms) = *self;
         let mut first = true;
         try!(write!(f, "("));
-        for ref t in terms.iter() {
+        for ref t in self.terms.iter() {
             if !first { try!(write!(f, " | " )); } else { first =  false; }
             try!(t.fmt(f));
         }
@@ -323,10 +324,11 @@ impl fmt::Show for Clause {
     }
 }
 
-// ----------------------------------------------------------------------------
-// 
-// ----------------------------------------------------------------------------
-pub type ClauseRef = Rc<Clause>;
+impl PartialEq for Clause {
+    fn eq(&self, other: &Clause) -> bool {
+        self.terms == other.terms
+    }
+}
 
 // ----------------------------------------------------------------------------
 //
@@ -335,41 +337,38 @@ pub type ClauseRef = Rc<Clause>;
 /**
  * An expression consisting of multiple Clauses that are ANDed together.
  */
- #[deriving(Clone)]
+ #[derive(Clone)]
 pub struct Expression {
-    data: Vec<Term>,
-    offsets: Vec<(uint, uint)>,
-    index: TrieMap<Vec<(uint, uint)>>
+    clauses: Vec<Clause>,
+    index: HashMap<Var, Vec<usize>>
 }
 
 /**
  * An iterator type for iterating over clauses in an expression. Turns the 
- * internal representation of clauses (i.e. a collection of (offset, len) 
- * pairs) into slices for external consumption.
+ * internal representation of clauses into slices for external consumption.
  */
-struct ClauseIterator<'a> { 
-    data: &'a Vec<Term>,
-    offsets: slice::Items<'a, (uint, uint)>
+struct ClauseIterator<'a> {
+    exp: &'a Expression,
+    items: slice::Iter<'a, usize>
 }
 
-impl<'a> Iterator<&'a[Term]> for ClauseIterator<'a> {
+impl<'a> Iterator for ClauseIterator<'a> {
+    type Item = &'a[Term];
     fn next(&mut self) -> Option<&'a[Term]> {
-        match self.offsets.next() {
+        match self.items.next() {
             None => None,
-            Some (&(offset, len)) => {
-                Some(self.data.slice(offset, offset + len))
+            Some(idx) => {
+                Some(self.exp[*idx].terms().as_slice())
             }
         }
     }
 }
 
+static empty_vector : & 'static [usize] = &[];
+
 impl Expression {
     pub fn new() -> Expression { 
-        Expression {
-            data: Vec::new(),
-            offsets: Vec::new(),
-            index: TrieMap::new()
-        }
+        Expression { clauses: Vec::new(), index: HashMap::new() }
     }
 
     /**
@@ -384,21 +383,18 @@ impl Expression {
         exp
     }
 
-    pub fn clauses(&self) -> ClauseIterator {
-        ClauseIterator { 
-            data: &self.data, 
-            offsets: self.offsets.iter() 
-        }
+    pub fn clauses<'a>(&'a self) -> slice::Iter<'a, Clause> {
+        self.clauses.iter()
     }
 
-    pub fn clauses_containing(&self, v: Var) -> ClauseIterator {
-        let iter = match self.index.find(&v) {
-            Some(v) => v.iter(),
-            None => [].iter()    
-        };
-        ClauseIterator {
-            data: &self.data,
-            offsets: iter
+    pub fn clauses_containing<'a>(&'a self, v: Var) -> ClauseIterator<'a> {
+        match self.index.get(&v) {
+            Some(clauses) => {
+                ClauseIterator { exp: self, items: clauses.iter() }
+            },
+            None => {
+                ClauseIterator { exp: self, items: empty_vector.iter() }
+            }
         }
     }
 
@@ -409,7 +405,7 @@ impl Expression {
     pub fn apply(&self, sln: &Solution) -> SolutionValue {
         for clause in self.clauses() {
             let mut val = False;
-            for term in clause.iter() {
+            for term in clause.terms().iter() {
                 val = val | term.value(sln);
             }
             match val {
@@ -421,19 +417,18 @@ impl Expression {
     }
 
     pub fn add(&mut self, clause: &[Term]) {
-        let slice = (self.data.len(), clause.len());
-        self.offsets.push(slice);
-        self.data.push_all(clause);
-
-        for var in clause.iter().map(|t| t.var()) {
-            let mut add_new = false;
-            match self.index.find_mut(&var) {
-                Some(v) => v.push(slice),
-                None => add_new = true
+        self.clauses.push(Clause::from(clause));
+        let idx = self.clauses.len()-1;
+        for t in clause.iter() {
+            let v = t.var();
+            let mut added = true;
+            match self.index.get_mut(&v) {
+                Some(clauses) => clauses.push(idx),
+                None => added = false
             }
 
-            if add_new {
-                self.index.insert(var, vec![slice]);
+            if !added {
+                self.index.insert(v, vec!(idx));
             }
         }
     }
@@ -441,7 +436,7 @@ impl Expression {
 
 impl PartialEq for Expression {
     fn eq(&self, other: &Expression) -> bool {
-        self.data == other.data && self.offsets == other.offsets
+        self.clauses == other.clauses
     }    
 }
 
@@ -458,6 +453,22 @@ impl fmt::Show for Expression {
     }
 }
 
+impl ops::Index<usize> for Expression {
+    type Output = Clause;
+
+    fn index<'a>(&'a self, index: &usize) -> &'a Clause {
+        &self.clauses[*index]
+    }
+}
+
+impl ops::IndexMut<usize> for Expression {
+    type Output = Clause;
+
+    fn index_mut<'a>(&'a mut self, index: &usize) -> &'a mut Clause {
+        &mut self.clauses[*index]
+    }
+}
+
 #[test]
 fn get_clauses_containing_var_returns_only_clauses_containing_var() {
     let sln = Expression::from(&[
@@ -469,7 +480,7 @@ fn get_clauses_containing_var_returns_only_clauses_containing_var() {
 
     let clauses : Vec<&[Term]> = sln.clauses_containing(1).collect();
     assert!(clauses.len() == 2);
-    assert!(clauses.iter().find(|c| **c == [Lit(1), Lit(2), Lit(3)].as_slice()).is_some())
+    assert!(clauses.iter().find(|c| **c == [Lit(1), Lit(2), Lit(3)].as_slice()).is_some());
     assert!(clauses.iter().find(|c| **c == [Lit(1)].as_slice()).is_some())
 }
 

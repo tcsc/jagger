@@ -1,25 +1,25 @@
-use std::collections::{TreeMap, BitvSet};
-
-use std::rc::Rc;
+use std::collections::{HashMap, BitvSet};
 use std::fmt;
-use solver::{Clause, ClauseRef, Solution, False, Unassigned, Not, Lit};
+use std::iter::FromIterator;
+use solver::{Term, Clause, Solution, SolutionValue, Var};
+use solver::Term::*;
+use solver::SolutionValue::{True, False, Unassigned};
 
-use pkg;
-use pkg::{Package, Gte, Lt, Lte, Eq, Any};
+use pkg::*;
 
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
 enum FormulatorError {
-    NoVariableFor (String, uint)
+    NoVariableFor (String, Ordinal)
 }
 
 impl fmt::Show for FormulatorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NoVariableFor (ref name, ordinal) => {
-                write!(f, "{}, #{:u}", name, ordinal)
+            FormulatorError::NoVariableFor (ref name, ordinal) => {
+                write!(f, "{0}, #{1}", name, ordinal)
             }
         }
     }
@@ -28,20 +28,21 @@ impl fmt::Show for FormulatorError {
 type FormulatorResult<T> = Result<T, FormulatorError>;
 
 fn no_var_for<T>(pkg: &Package) -> FormulatorResult<T> {
-    Err(NoVariableFor(String::from_str(pkg.name()), pkg.ordinal()))
+    let s = String::from_str(pkg.name());
+    Err(FormulatorError::NoVariableFor(s, pkg.ordinal()))
 }
 
 /**
  *
  */
 struct Solver<'a> {
-    pkgvars: TreeMap<&'a pkg::Package, uint>,
-    pkgdb: &'a pkg::PkgDb
+    pkgvars: HashMap<&'a Package, Var>,
+    pkgdb: &'a PkgDb
 }
 
 impl<'a> Solver<'a> {
-	fn new(packages: &'a pkg::PkgDb) -> Solver<'a> {
-		let mut s = Solver{ pkgvars: TreeMap::new(), pkgdb: packages };
+	fn new(packages: &'a PkgDb) -> Solver<'a> {
+		let mut s = Solver{ pkgvars: HashMap::new(), pkgdb: packages };
         for (n, p) in packages.iter().enumerate() {
             s.pkgvars.insert(p, n);
         }
@@ -52,13 +53,13 @@ impl<'a> Solver<'a> {
      * Generates a Clause descrbing a mutual exclusion
      */
     fn make_conflict_clause(&self, a: &Package, b: &Package) -> FormulatorResult<Clause> {
-        let va = Not(try!(self.pkg_var(a)));
-        let vb = Not(try!(self.pkg_var(b)));
-        Ok(Clause(vec![va, vb]))
+        let va = Term::Not(try!(self.pkg_var(a)));
+        let vb = Term::Not(try!(self.pkg_var(b)));
+        Ok( Clause::from(&[va, vb]) )
     }
 
-    fn pkg_vars(&self, name: &str, exp: pkg::VersionExpression) -> FormulatorResult<Vec<uint>> {
-        let mut pkgs : Vec<uint> = vec![];
+    fn pkg_vars(&self, name: &str, exp: VersionExpression) -> FormulatorResult<Vec<Var>> {
+        let mut pkgs : Vec<Var> = vec![];
         for pkg in self.pkgdb.select(name, exp).iter() {
             let pkgvar = try!(self.pkg_var(*pkg));
             pkgs.push(pkgvar);
@@ -74,14 +75,14 @@ impl<'a> Solver<'a> {
      * Looks up the variable that represents a given package in the solver. 
      * Returns None if no such variable exists.
      */
-    fn find_pkg_var(&'a self, pkg: &'a pkg::Package) -> Option<uint> {
-        match self.pkgvars.find(&pkg) {
+    fn find_pkg_var(&'a self, pkg: &'a Package) -> Option<Var> {
+        match self.pkgvars.get(&pkg) {
             Some(n) => Some(*n),
             None => None
         }
     }
 
-    fn pkg_var(&'a self, pkg: &'a pkg::Package) -> FormulatorResult<uint> {
+    fn pkg_var(&'a self, pkg: &'a Package) -> FormulatorResult<Var> {
         match self.find_pkg_var(pkg) {
             None => no_var_for(pkg),
             Some(n) => Ok(n)
@@ -92,7 +93,7 @@ impl<'a> Solver<'a> {
 impl<'a> fmt::Show for Solver<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (key, value) in self.pkgvars.iter() {
-            try!(writeln!(f, "{}: {:p}: {}", key, *key, value));
+            try!(writeln!(f, "{:?}: {:p}: {}", key, *key, value));
         }
         writeln!(f, "")
     }    
@@ -107,7 +108,7 @@ impl<'a> fmt::Show for Solver<'a> {
 fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Clause>> {
     let mut result = vec![];
     let mut visited = BitvSet::new();
-    let pkgs = try!(s.pkg_vars(name, Any));
+    let pkgs = try!(s.pkg_vars(name, VersionExpression::Any));
 
     for a in pkgs.iter() {
         for b in pkgs.iter() {
@@ -119,7 +120,7 @@ fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<C
                 continue;
             }
 
-            result.push( Clause(vec![Not(*a), Not(*b)]) );
+            result.push( Clause::from(&[Term::Not(*a), Term::Not(*b)]) );
         }
         visited.insert(*a);
     }
@@ -135,7 +136,7 @@ fn unique_package_install_clauses_are_created_correctly() {
     let db = &mk_test_db();
     let s = Solver::new(db);
     let actual = make_unique_install_clauses(&s, "alpha").unwrap();
-    let pkgs = db.select("alpha", Any);
+    let pkgs = db.select("alpha", VersionExpression::Any);
 
     for a in pkgs.iter() {
         for b in pkgs.iter() {
@@ -160,13 +161,13 @@ fn unique_package_install_clauses_are_created_correctly() {
 /**
  * Generates a list of conflicts
  */
-fn make_conflicts_clauses(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Vec<Clause>> {
+fn make_conflicts_clauses(s: &Solver, pkg: &Package, exp: &PkgExp) -> FormulatorResult<Vec<Clause>> {
     let pkgvar = try!(s.pkg_var(pkg));
     let mut result = Vec::new();
 
     for conflict in s.pkgdb.select_exp(exp).iter() {
         let conflict_var = try!(s.pkg_var(*conflict));
-        result.push( Clause::from([Not(pkgvar), Not(conflict_var)]) ) 
+        result.push( Clause::from(&[Term::Not(pkgvar), Term::Not(conflict_var)]) ) 
     }
     Ok(result)
 }
@@ -176,7 +177,7 @@ fn package_conflict_clauses_are_generated_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
-    let pkg = match db.select("gamma", Eq(5)).as_slice() {
+    let pkg = match db.select("gamma", eq(5)).as_slice() {
         [p] => p,
         _ => {
             assert!(false, "Expected exactly one package returned from select");
@@ -186,19 +187,18 @@ fn package_conflict_clauses_are_generated_correctly() {
 
     let s = Solver::new(db);
     let pkgvar = s.pkg_var(pkg).unwrap();
-    let expected : Vec<Clause> = db.select("alpha", Lte(2))
-                                 .iter()
-                                 .map(|p| { 
-                                    Clause( vec![Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )
-                                 })
-                                 .collect();
+    let expected : Vec<Clause> 
+        = db.select("alpha", lte(2))
+            .iter()
+            .map(|p| Clause::from( &[Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )  )
+            .collect();
 
     match make_conflicts_clauses(&s, pkg, &pkg.conflicts()[0]) {
         Ok (actual) => {
-            assert!(actual == expected, "expected {}, got {}", expected, actual);
+            assert!(actual == expected, "expected {:?}, got {:?}", expected, actual);
         },
         Err (reason) => {
-            assert!(false, "Failed with {}", reason)
+            assert!(false, "Failed with {0:?}", reason)
         }
     }
 }
@@ -207,15 +207,15 @@ fn package_conflict_clauses_are_generated_correctly() {
  * Generates Clauses that specify that a version of the installed packages must 
  * stay installed. Installed packages can be upgraded but not uninstalled.
  */
-fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<ClauseRef>> {
+fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<Clause>> {
     let mut result = Vec::new();
     for pkg in s.pkgdb.installed_packages().iter() {
-        let valid_pkgs = s.pkgdb.select(pkg.name(), Gte(pkg.ordinal()));
-        let mut clause = Clause::new();
+        let valid_pkgs = s.pkgdb.select(pkg.name(), gte(pkg.ordinal()));
+        let mut terms : Vec<Term> = Vec::new();
         for p in valid_pkgs.iter() {
-            clause.add(Lit(try!(s.pkg_var(*p))))
+            terms.push(Term::Lit(try!(s.pkg_var(*p))))
         }
-        result.push(Rc::new(clause));
+        result.push( Clause::from(terms.as_slice()) );
     }
     Ok(result)
 }
@@ -227,40 +227,38 @@ fn installed_packages_must_be_installed_or_upgraded() {
     let db = &mk_test_db();
     let s = Solver::new(db);
 
-    let mk_test_clause = |name, ord| -> Clause {
+    let mk_test_clause = |&: name: &str, ord: Ordinal| -> Clause {
         FromIterator::from_iter(
-            db.select(name, Gte(ord))
+            db.select(name, gte(ord))
               .iter()
               .map(|p| s.pkg_var(*p).unwrap())
-              .map(|v| Lit(v)))
+              .map(|v| Term::Lit(v)))
     };
 
-    let find_clause = |a: &Clause, b: &Clause| -> bool {
-        let Clause(ref r1) = *a;
-        let Clause(ref r2) = *b;
-        r1 == r2
+    let find_clause = |&: a: &Clause, b: &Clause| -> bool {
+        *a == *b
     };
 
     match make_installed_package_upgrade_clauses(&s) {
         Ok (clauses) => {
-            assert!(clauses.len() == 2, "Expected 2 Clauses, got {}", clauses.len());
+            assert!(clauses.len() == 2, "Expected 2 Clauses, got {0:?}", clauses.len());
 
             let r1 = mk_test_clause("alpha", 1);
             let r2 = mk_test_clause("beta", 4);
 
             assert!(clauses.iter()
-                         .find(|x| find_clause(x.deref(), &r1))
-                         .is_some(), 
-                    "Couldn't find Clause {}", r1);
+                           .find(|x| find_clause(*x, &r1))
+                           .is_some(), 
+                    "Couldn't find Clause {0:?}", r1);
 
             assert!(clauses.iter()
-                         .find(|x| find_clause(x.deref(), &r2))
-                         .is_some(), 
-                    "Couldn't find Clause {}", r2);
+                           .find(|x| find_clause(*x, &r2))
+                           .is_some(), 
+                    "Couldn't find Clause {0:?}", r2);
 
         },
         Err (reason) => {
-            fail!("failed with {}", reason)
+            panic!("failed with {0:?}", reason)
         }
     }
 }
@@ -271,7 +269,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
 fn deny_installed_package_downgrades(s: &Solver,sln: &Solution) -> FormulatorResult<Solution> {
     let mut result = sln.clone(); 
     for pkg in s.pkgdb.installed_packages().iter() {
-        let invalid_pkgs = s.pkgdb.select(pkg.name(), Lt(pkg.ordinal()));
+        let invalid_pkgs = s.pkgdb.select(pkg.name(), lt(pkg.ordinal()));
         for invalid_pkg in invalid_pkgs.iter() {
             let ivar = try!(s.pkg_var(*invalid_pkg));
             result.set(ivar, False);
@@ -288,8 +286,8 @@ fn installed_package_downgrades_are_disabled() {
     let solver = Solver::new(db);
     let sln = deny_installed_package_downgrades(&solver, &Solution::new(100)).unwrap();
 
-    debug!("Pkgs: {}", solver.pkgvars);
-    debug!("Soln: {}", sln);
+    debug!("Pkgs: {0:?}", solver.pkgvars);
+    debug!("Soln: {0:?}", sln);
 
     for pkg in db.installed_packages().iter() {
         let pvar = solver.pkg_var(*pkg).unwrap();
@@ -322,17 +320,16 @@ fn installed_package_downgrades_are_disabled() {
  * the unique install Clause to make sure *only one* of them is installed in 
  * the end.
  */
-fn make_requires_clause(s: &Solver, pkg: &pkg::Package, exp: &pkg::PkgExp) -> FormulatorResult<Clause> {
+fn make_requires_clause(s: &Solver, pkg: &Package, exp: &PkgExp) -> FormulatorResult<Clause> {
     let mut result = Vec::new();
     let pkgvar = try!(s.pkg_var(pkg));
-    result.push(Not(pkgvar));
+    result.push(Term::Not(pkgvar));
     for dep in s.pkgdb.select_exp(exp).iter() {
         let v = try!(s.pkg_var(*dep));
-        result.push(Lit(v))
+        result.push(Term::Lit(v))
     }
-    Ok(Clause(result))
+    Ok( Clause::from(result.as_slice()) )
 }
-
 
 #[test]
 fn package_requirement_clauses_are_created_correctly() {
@@ -340,7 +337,7 @@ fn package_requirement_clauses_are_created_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
-    let pkg = match db.select("gamma", Eq(5)).as_slice() {
+    let pkg = match db.select("gamma", eq(5)).as_slice() {
         [p] => p,
         _ => {
             assert!(false, "Expected exactly one package returned from select");
@@ -351,28 +348,34 @@ fn package_requirement_clauses_are_created_correctly() {
     let s = Solver::new(db);
 
     let mut expected = vec![ match s.pkg_var(pkg) {
-        Err(reason) => { assert!(false, "Failed with {}", reason); return },
-        Ok(var) => Not(var)
+        Err(reason) => { assert!(false, "Failed with {0:?}", reason); return },
+        Ok(var) => Term::Not(var)
     }];
-    match s.pkg_vars("beta", Gte(5)) {
-        Err(reason) => assert!(false, "Failed with {0}", reason),
-        Ok(vars) => expected.extend(vars.iter().map(|x| Lit(*x)))
+    match s.pkg_vars("beta", gte(5)) {
+        Err(reason) => assert!(false, "Failed with {0:?}", reason),
+        Ok(vars) => expected.extend(vars.iter().map(|x| Term::Lit(*x)))
     };
 
     match make_requires_clause(&s, pkg, &pkg.requires()[0]) {
         Ok (actual) => {
-            let e = Clause(expected);
-            assert!(actual == e, "Expected: {}, got {}", e, actual);
+            let e = Clause::from(expected.as_slice());
+            assert!(actual == e, "Expected: {0:?}, got {1:?}", e, actual);
         },
         Err (reason) => {
-            assert!(false, "Failed with {}", reason)
+            assert!(false, "Failed with {0:?}", reason)
         }
     }
 }
 
+#[cfg(test)]
+fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where 
+    F: FnMut(usize) -> Package 
+{
+    FromIterator::from_iter(range(0, n).map(f))
+}
 
 #[cfg(test)]
-fn mk_test_db() -> pkg::PkgDb {
+fn mk_test_db() -> PkgDb {
     // b0  b1  b2  b3  b4* b5  b6  b7  b8  b9
     //  |   |   |   |   |   |   |   |   |   |
     // >=  >=  >=  >=  >=  >=  >=  >=  >=  >=
@@ -383,21 +386,21 @@ fn mk_test_db() -> pkg::PkgDb {
     //  |       |       |       |       |
     // a0      a1*     a2      a3      a4
 
-    let mut db = pkg::PkgDb::new();
-    db.add_packages(Vec::from_fn(5, |n| { 
-        let state = if n == 1 { pkg::Installed } else { pkg::Available };
-        pkg::Package::new("alpha", n, state)
+    let mut db = PkgDb::new();
+    db.add_packages(pkg_vec(5, |n| { 
+        let state = if n == 1 { State::Installed } else { State::Available };
+        Package::new("alpha", n, state)
     }).as_slice());
     
-    db.add_packages(Vec::from_fn(10, |n| {
-        let state = if n == 4 { pkg::Installed } else { pkg::Available };
-        pkg::Package::new("beta", n, state)
+    db.add_packages(pkg_vec(10, |n| {
+        let state = if n == 4 { State::Installed } else { State::Available };
+        Package::new("beta", n, state)
     }).as_slice());
     
-    db.add_packages(Vec::from_fn(10, |n| { 
-        let mut p = pkg::Package::new("gamma", n, pkg::Available);
-        p.add_requirement("beta", Gte(n));
-        p.add_conflict("alpha", Lte(n / 2));
+    db.add_packages(pkg_vec(10, |n| { 
+        let mut p = Package::new("gamma", n, State::Available);
+        p.add_requirement("beta", gte(n));
+        p.add_conflict("alpha", lte(n / 2));
         p
     }).as_slice());
 

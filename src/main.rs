@@ -1,5 +1,6 @@
-#![feature(phase)]
-#[phase(plugin, link)] extern crate log;
+#![feature(box_syntax)]
+#![allow(unstable)]
+#[macro_use] extern crate log;
 extern crate test;
 
 mod metadata;
