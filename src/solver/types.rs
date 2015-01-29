@@ -3,7 +3,8 @@ use std::ops;
 use std::cmp;
 use std::slice;
 use std::iter::{FromIterator, repeat};
-use std::collections::HashMap;
+use std::collections;
+use std::collections::{BTreeSet, HashMap, VecMap};
 
 use self::SolutionValue::{True, False, Unassigned};
 use self::Term::{Lit, Not};
@@ -12,6 +13,55 @@ use self::Term::{Lit, Not};
 //
 // ----------------------------------------------------------------------------
 pub type Var = usize;
+
+// ----------------------------------------------------------------------------
+//
+// ----------------------------------------------------------------------------
+
+#[derive(Clone, PartialEq, Eq, Show)]
+pub struct VarSet(BTreeSet<Var>);
+
+impl VarSet {
+    pub fn new () -> VarSet { VarSet(BTreeSet::new()) }
+
+    pub fn insert(&mut self, value: Var) {
+        let VarSet(ref mut this) = *self;
+        this.insert(value);
+    }
+
+    pub fn remove(&mut self, value: &Var) -> bool {
+        let VarSet(ref mut this) = *self;
+        this.remove(value)
+    }
+
+    pub fn contains(&mut self, value: &Var) -> bool {
+        let VarSet(ref mut this) = *self;
+        this.contains(value)
+    }
+
+    pub fn iter(&self) -> collections::btree_set::Iter<Var> {
+        let VarSet(ref this) = *self;
+        this.iter()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let VarSet(ref this) = *self;
+        this.is_empty()   
+    }
+}
+
+impl FromIterator<Var> for VarSet {
+    fn from_iter<I: Iterator<Item=Var>>(mut iter: I) -> VarSet {
+        VarSet(FromIterator::from_iter(iter))
+    }
+}
+
+impl Extend<Var> for VarSet {
+    fn extend<I: Iterator<Item=Var>>(&mut self, mut iter: I) {
+        let VarSet(ref mut this) = *self;
+        this.extend(iter)
+    }
+}
 
 // ----------------------------------------------------------------------------
 //
@@ -270,23 +320,18 @@ impl fmt::Show for Term {
 
 #[derive(Clone)]
 pub struct Clause {
-    watch_a: isize,  // merge into a 2-element array
-    watch_b: isize,
     terms: Vec<Term>
 }
 
 impl Clause {
     pub fn new() -> Clause {
-        Clause { watch_a: -1, watch_b: -1, terms: vec![]}
+        Clause { terms: vec![]}
     }
 
     pub fn from(terms: &[Term]) -> Clause {
         let mut v : Vec<Term> = Vec::with_capacity(terms.len());
         v.push_all(terms);
-
-        let a = if v.len() >= 1 { 0 } else { -1 };
-        let b = if v.len() >= 2 { 1 } else { -1 };
-        Clause { watch_a: a, watch_b: b, terms: v }
+        Clause { terms: v }
     }
 
     pub fn len(&self) -> usize {
@@ -330,6 +375,8 @@ impl PartialEq for Clause {
     }
 }
 
+pub type ClauseId = usize;
+
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
@@ -340,7 +387,7 @@ impl PartialEq for Clause {
  #[derive(Clone)]
 pub struct Expression {
     clauses: Vec<Clause>,
-    index: HashMap<Var, Vec<usize>>
+    index: VecMap<Vec<usize>>
 }
 
 /**
@@ -368,7 +415,7 @@ static empty_vector : & 'static [usize] = &[];
 
 impl Expression {
     pub fn new() -> Expression { 
-        Expression { clauses: Vec::new(), index: HashMap::new() }
+        Expression { clauses: Vec::new(), index: VecMap::new() }
     }
 
     /**

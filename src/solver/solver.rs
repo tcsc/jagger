@@ -1,17 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::collections::hash_map::{Keys, Values, Iter};
 use std::iter::{FromIterator, range_step};
 use std::ops::{Index, IndexMut};
 use std::fmt;
 use log;
 
-use solver::types::{Solution, SolutionValue, Expression, Var, Term};
+use solver::types::{Solution, SolutionValue, Expression, Var, VarSet, Term};
 use solver::types::SolutionValue::{Unassigned, True, False};
 use solver::types::Term::{Lit, Not};
-
-type VarSet = HashSet<Var>;
-
-fn var_set() -> VarSet { HashSet::new() }
+use solver::implication_graph::ImplicationGraph;
 
 // ----------------------------------------------------------------------------
 //
@@ -66,7 +63,7 @@ fn pick_var(vars: &VarSet) -> Var {
 }
 
 fn scan_unassigned_vars(varcount: usize, sln: &Solution) -> VarSet {
-    let mut result = var_set();
+    let mut result = VarSet::new();
     for v in range(1, varcount+1) {
         if !sln.is_assigned(v) { result.insert(v); }
     }
@@ -165,113 +162,6 @@ impl fmt::Show for DecisionStack {
 }
 
 // ----------------------------------------------------------------------------
-// Implication graph implementation
-// ----------------------------------------------------------------------------
-
-struct ImplicationGraph {
-    map: HashMap<Var, VarSet>
-}
-
-impl ImplicationGraph {
-    fn new() -> ImplicationGraph {
-        ImplicationGraph { map: HashMap::new() }
-    }
-
-    fn from(items: &[(Var, &[Var])]) -> ImplicationGraph {
-        let mut g = ImplicationGraph::new();
-        for &(var, roots) in items.iter() {
-            for r in roots.iter() {
-                g.add(var, *r);
-            }
-        }
-        g
-    }
-
-    fn add(&mut self, v: Var, root: Var) {
-        let mut insert_new = false;
-        match self.map.get_mut(&v) {
-            Some (s) => { s.insert(root); },
-            None => { insert_new = true; }
-        }
-
-        if insert_new {
-            let mut s = var_set();
-            s.insert(root);
-            self.map.insert(v, s);
-        }       
-    }
-
-    fn erase(&mut self, v: Var) {
-        self.map.remove(&v);
-    }
-
-    fn add_from_clause(&mut self, v: Var, clause: &[Term]) {
-        for t in clause.iter() {
-            let root = t.var();
-            if root != v { self.add(v, root); }
-        }
-    }
-
-    fn get_roots(&self, v: Var) -> Vec<Var> {
-        match self.map.get(&v) {
-            Some (s) => s.iter().map(|v| *v).collect(),
-            None => Vec::new()
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    fn len(&self) -> usize {
-        self.map.len()
-    }
-}
-
-#[test]
-fn implication_graph_duplicate_roots_are_not_added() {
-    let mut g = ImplicationGraph::new();
-    g.add(42, 1);
-    g.add(42, 1);
-    let x = g.get_roots(42);
-    assert!(x.len() == 1);
-    assert!(x.iter().any(|v| *v == 1));
-}
-
-#[test]
-fn implication_graph_unset_roots_returns_empty_vec() {
-    let mut g = ImplicationGraph::new();
-    let x = g.get_roots(42);
-    assert!(x.is_empty());
-}
-
-#[test]
-fn implication_graph_setting_from_clause_doesnt_include_target() {
-    let mut g = ImplicationGraph::new();
-    g.add_from_clause(2, &[Lit(1), Lit(2), Lit(3)]);
-    g.add_from_clause(2, &[Not(2), Lit(3), Lit(4)]);
-    let x = g.get_roots(2);
-    assert!(x.len() == 3);
-    assert!(x.iter().any(|v| *v == 1));
-    assert!(x.iter().any(|v| *v == 3));
-    assert!(x.iter().any(|v| *v == 4));
-}
-
-#[test]
-fn implication_graph_erase_erases() {
-    let mut g = ImplicationGraph::new();
-    g.add_from_clause(1, &[Lit(1), Lit(2), Lit(3)]);
-    g.add_from_clause(2, &[Lit(1), Lit(2), Lit(3)]);
-    g.add_from_clause(3, &[Not(2), Lit(3), Lit(4)]);
-
-    g.erase(2);
-    assert!(g.get_roots(2).is_empty());
-
-    assert!(!g.get_roots(1).is_empty());
-    assert!(!g.get_roots(3).is_empty());
-}
-
-// ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
 
@@ -347,8 +237,8 @@ fn try_assignment(var: Var,
     sln.set(var, val);
     vars.remove(&var);
 
-    debug!("Solution: {:?}", sln);
-    debug!("Unset Vars: {:?}", vars);
+//    debug!("Solution: {:?}", sln);
+//    debug!("Unset Vars: {:?}", vars);
 
     match propagate(sln, var, val, exp, g) {
         // Yay - the assignment of var = val was valid. Time to update the 
@@ -363,7 +253,7 @@ fn try_assignment(var: Var,
         // Any sort of failure - get set up for the next pass by pushing a copy of our 
         // original state with an updated value to try  
         rval @ _ => {
-            debug!("Assignment failed.");
+            debug!("Assignment failed: {:?}. Cleaning up.", rval);
             sln.unset(var);
             vars.insert(var);
             rval
@@ -486,7 +376,7 @@ impl SolveState {
 #[test]
 fn stack_unwound_to_expected_point() {
     let mut state = SolveState {
-        unassigned_vars: var_set(),
+        unassigned_vars: VarSet::new(),
         implications: ImplicationGraph::new(),
         solution: Solution::new(10),
         stack: DecisionStack::new()
@@ -760,9 +650,9 @@ fn propagate(sln: &mut Solution,
 
     let mut implications = ImplicationMap::new();
     let mut queue : Vec<(Var, SolutionValue)> = Vec::new();
-    let mut conflicts = var_set();
+    let mut conflicts = VarSet::new();
     let mut conflict_clauses : Vec<Vec<Term>> = Vec::new(); 
-    let mut clause_vars = var_set();
+    let mut clause_vars = VarSet::new();
 
     queue.push((seed_var, seed_val));
     implications.add(seed_var, seed_val);
@@ -780,7 +670,7 @@ fn propagate(sln: &mut Solution,
         for clause in e.clauses_containing(var) {
             match analyse_clause(clause, sln) {
                 ClauseAnalysis::IsUnit (term) => {
-                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
+//                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
                     let v = term.var();
 
                     if conflicts.contains(&v) {
@@ -793,13 +683,13 @@ fn propagate(sln: &mut Solution,
                         Not (_) => False
                     };
 
-                    debug!("\t\tDeduced that {:?} = {:?}", v, deduced_value);
+                  debug!("\t\tDeduced that {:?} = {:?}", v, deduced_value);
                     g.add_from_clause(v, clause);
 
                     // check for a contradiction - have we aleady deduced that 
                     // this variable must have a different value?
-                    debug!("\t\tExisting implication for {:?} is {:?} (Unassigned -> None)", 
-                           v, implications.value_of(v));
+//                  debug!("\t\tExisting implication for {:?} is {:?} (Unassigned == None)", 
+//                         v, implications.value_of(v));
 
                     match implications.value_of(v) {
                         SolutionValue::Unassigned => { 
@@ -826,7 +716,7 @@ fn propagate(sln: &mut Solution,
                 },
 
                 ClauseAnalysis::IsTrue => { 
-                    debug!("\t\tClause {:?} is TRUE", clause);
+                    //debug!("\t\tClause {:?} is TRUE", clause);
                 },
 
                 ClauseAnalysis::IsFalse => {
@@ -842,16 +732,18 @@ fn propagate(sln: &mut Solution,
                 },
 
                 ClauseAnalysis::IsIndeterminate => { 
-                    debug!("\t\tClause {:?} is still indeterminate", clause);
+                    //debug!("\t\tClause {:?} is still indeterminate", clause);
                 }
             }
         }
     }
 
     if conflict_clauses.is_empty() {
+        debug!("Propagation success");
         PropagationResult::Success (implications.vars().map(|v| *v).collect())
     }
     else {
+        debug!("Contradiction, cleaning up...");
         for v in implications.vars() {
             sln.unset(*v);
             g.erase(*v);
