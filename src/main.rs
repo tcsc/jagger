@@ -1,6 +1,7 @@
 #![feature(box_syntax)]
 #![allow(unstable)]
 #[macro_use] extern crate log;
+extern crate graphviz;
 extern crate test;
 
 mod metadata;

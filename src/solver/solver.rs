@@ -167,18 +167,18 @@ impl fmt::Show for DecisionStack {
 
 fn learn_conflict_clause(v: Var, sln: &Solution, g: &ImplicationGraph) -> Vec<Term> {
     let mut clause = Vec::new();
-    for r in g.get_roots(v).iter() {
-        let term = match sln[*r] {
-            True => Not(*r),
-            False => Lit(*r),
-            Unassigned => {
-                let all_roots : Vec<Var> = g.get_roots(v); 
-                panic!("This should never happen (r: {:?}, all: {:?})", r, all_roots); 
-                Lit(0) 
-            }
-        };
-        clause.push(term)
-    }
+    // for r in g.get_roots(v).iter() {
+    //     let term = match sln[*r] {
+    //         True => Not(*r),
+    //         False => Lit(*r),
+    //         Unassigned => {
+    //             let all_roots : Vec<Var> = g.get_roots(v); 
+    //             panic!("This should never happen (r: {:?}, all: {:?})", r, all_roots); 
+    //             Lit(0) 
+    //         }
+    //     };
+    //     clause.push(term)
+    // }
     clause
 }
 
@@ -198,24 +198,25 @@ fn mk_graph_test_exp() -> Expression {
 
 #[test]
 fn learn_clause_finds_expected_clause() {
-    let exp = mk_graph_test_exp();
-    let sln = Solution::from(12, &[
-        (1, False), (2, False), (3, True), (7, True), (8, False), (12, True)
-    ]);
+    // let exp = mk_graph_test_exp();
+    // let sln = Solution::from(12, &[
+    //     (1, False), (2, False), (3, True), (7, True), (8, False), (12, True)
+    // ]);
 
-    let g = ImplicationGraph::from(&[
-        ( 4, &[1]),
-        ( 8, &[1]),
-        ( 9, &[3, 7, 8]),
-        (11, &[2]),
-        (12, &[1, 8])
-    ]);
+    // let g = ImplicationGraph::from(&[
+    //     ( 4, &[1]),
+    //     ( 8, &[1]),
+    //     ( 9, &[3, 7, 8]),
+    //     (11, &[2]),
+    //     (12, &[1, 8])
+    // ]);
 
-    let clause = learn_conflict_clause(9, &sln, &g);
-    assert!(clause.len() == 3);
-    assert!(clause.iter().any(|t| *t == Not(3)), "Clause must contain ~3");
-    assert!(clause.iter().any(|t| *t == Not(7)), "Clause must contain ~7");
-    assert!(clause.iter().any(|t| *t == Lit(8)), "Clause must contain 8");
+    // let clause = learn_conflict_clause(9, &sln, &g);
+    // assert!(clause.len() == 3);
+    // assert!(clause.iter().any(|t| *t == Not(3)), "Clause must contain ~3");
+    // assert!(clause.iter().any(|t| *t == Not(7)), "Clause must contain ~7");
+    // assert!(clause.iter().any(|t| *t == Lit(8)), "Clause must contain 8");
+    panic!("Re-enable this test!")
 }
 
 // ----------------------------------------------------------------------------
@@ -330,9 +331,10 @@ impl SolveState {
         debug!("Undoing {:?} = {:?}, ", d.var, d.value);
         for k in d.implications.iter() {
             debug!("Unsetting {:?}", k);
+            let k_val = self.solution[*k];
             self.solution.unset(*k);
             self.unassigned_vars.insert(*k);
-            self.implications.erase(*k);
+            self.implications.remove(*k, k_val);
         }
     }
 
@@ -382,12 +384,14 @@ fn stack_unwound_to_expected_point() {
         stack: DecisionStack::new()
     };
 
-    for x in range_step(1, 11, 2) {
+    for (level, x) in range_step(1, 11, 2).enumerate() {
         state.push(x, True);
         state.mut_peek().unwrap().implications = vec![x, x+1];
         state.solution.set(x, True);
         state.solution.set(x+1, False);
-        state.implications.add(x+1, x);
+        // TODO: fix this
+        state.implications.insert(level, x, True, &[]);
+        state.implications.insert(level, x+1, False, &[(x,True)]);
     }
 
     let missing_vars : VarSet = FromIterator::from_iter(
@@ -405,7 +409,8 @@ fn stack_unwound_to_expected_point() {
 
     assert!(range(1, 5).all(|n| state.solution[n] != Unassigned));
     assert!(range(5, 11).all(|n| state.solution[n] == Unassigned));
-    assert!(range(5, 11).all(|n| state.implications.get_roots(n) == vec![]));
+    //assert!(range(5, 11).all(|n| state.implications.get_roots(n) == vec![]));
+    panic!("re-enable me");
 
     assert!(state.stack.len() == 2);
 }
@@ -684,7 +689,8 @@ fn propagate(sln: &mut Solution,
                     };
 
                   debug!("\t\tDeduced that {:?} = {:?}", v, deduced_value);
-                    g.add_from_clause(v, clause);
+                    // g.add_from_clause(v, clause);
+                    // TODO: fixme
 
                     // check for a contradiction - have we aleady deduced that 
                     // this variable must have a different value?
@@ -725,8 +731,9 @@ fn propagate(sln: &mut Solution,
                     // know that this can't possibly be the right answer.
                     debug!("\t\tClause {:?} evaluates to false. Ooops.", clause);
                     for v in implications.vars() {
+                        let val = sln[*v];
                         sln.unset(*v);
-                        g.erase(*v);
+                        g.remove(*v, val);
                     }
                     return PropagationResult::EvaluatesToFalse
                 },
@@ -745,8 +752,9 @@ fn propagate(sln: &mut Solution,
     else {
         debug!("Contradiction, cleaning up...");
         for v in implications.vars() {
+            let val = sln[*v];
             sln.unset(*v);
-            g.erase(*v);
+            g.remove(*v, val);
             clause_vars.remove(v);
         }
         PropagationResult::Contradiction(conflict_clauses, clause_vars)

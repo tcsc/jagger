@@ -67,7 +67,7 @@ impl Extend<Var> for VarSet {
 //
 // ----------------------------------------------------------------------------
 
-#[derive(PartialEq, Eq, Show, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Show, Clone, Copy, Hash)]
 pub enum SolutionValue { Unassigned, True, False }
 
 impl SolutionValue {
