@@ -4,6 +4,7 @@
 extern crate graphviz;
 extern crate test;
 
+mod collections;
 mod metadata;
 mod pkg;
 mod solver;

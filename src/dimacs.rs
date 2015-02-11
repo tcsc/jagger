@@ -1,4 +1,4 @@
-use std::io;
+use std::old_io;
 use std::num::{self, SignedInt};
 use std::str::FromStr;
 use solver::{Expression, Term};
@@ -29,7 +29,7 @@ impl Problem {
 
 #[derive(Show, PartialEq)]
 pub enum DimacsError {
-    IoFailure (io::IoError),
+    IoFailure (old_io::IoError),
     ParseFailure (String)
 }
 
@@ -37,7 +37,7 @@ fn parse_failure<T>(s: String) -> Result<T, DimacsError> {
     Err(DimacsError::ParseFailure(s)) 
 }
 
-fn io_failure<T>(err: io::IoError) -> Result<T, DimacsError> {
+fn io_failure<T>(err: old_io::IoError) -> Result<T, DimacsError> {
     Err(DimacsError::IoFailure(err))
 }
 
@@ -46,8 +46,8 @@ fn io_failure<T>(err: io::IoError) -> Result<T, DimacsError> {
  */
 fn read_int(s: &str) -> Result<isize, DimacsError> {
     match FromStr::from_str(s) {
-        Some(n) => Ok(n),
-        None => {
+        Ok(n) => Ok(n),
+        Err(_) => {
             parse_failure(format!("Not an integer: \"{}\"", s))
         }
     }
@@ -112,7 +112,7 @@ fn problem_header_with_bad_clause_count_returns_error() {
     }
 }
 
-pub fn read<B: io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
+pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
     let mut clauses : Vec<Vec<Term>> = Vec::new();
     let mut nvars = 0;
     for line in buf.lines() {
@@ -142,14 +142,14 @@ pub fn read<B: io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
 }
 
 #[config(test)]
-fn make_buffer(lines: &[&str]) -> io::MemReader {
-    let mut text = io::MemWriter::new();
+fn make_buffer(lines: &[&str]) -> old_io::MemReader {
+    let mut text = old_io::MemWriter::new();
     for s in lines.iter() {
         match text.write_str(*s) {
             n => {}
         }
     }
-    io::MemReader::new( text.into_inner() )
+    old_io::MemReader::new( text.into_inner() )
 }
 
 #[test]

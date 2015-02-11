@@ -5,10 +5,10 @@ use std::ops::{Index, IndexMut};
 use std::fmt;
 use log;
 
-use solver::types::{Solution, SolutionValue, Expression, Var, VarSet, Term};
+use solver::types::{Solution, SolutionValue, Expression, Var, VarSet, Clause, Term};
 use solver::types::SolutionValue::{Unassigned, True, False};
 use solver::types::Term::{Lit, Not};
-use solver::implication_graph::ImplicationGraph;
+use solver::implication_graph::{ImplicationGraph, dump_graph};
 
 // ----------------------------------------------------------------------------
 //
@@ -165,23 +165,6 @@ impl fmt::Show for DecisionStack {
 //
 // ----------------------------------------------------------------------------
 
-fn learn_conflict_clause(v: Var, sln: &Solution, g: &ImplicationGraph) -> Vec<Term> {
-    let mut clause = Vec::new();
-    // for r in g.get_roots(v).iter() {
-    //     let term = match sln[*r] {
-    //         True => Not(*r),
-    //         False => Lit(*r),
-    //         Unassigned => {
-    //             let all_roots : Vec<Var> = g.get_roots(v); 
-    //             panic!("This should never happen (r: {:?}, all: {:?})", r, all_roots); 
-    //             Lit(0) 
-    //         }
-    //     };
-    //     clause.push(term)
-    // }
-    clause
-}
-
 #[config(test)]
 fn mk_graph_test_exp() -> Expression {
     Expression::from(&[
@@ -196,28 +179,6 @@ fn mk_graph_test_exp() -> Expression {
     ])
 }
 
-#[test]
-fn learn_clause_finds_expected_clause() {
-    // let exp = mk_graph_test_exp();
-    // let sln = Solution::from(12, &[
-    //     (1, False), (2, False), (3, True), (7, True), (8, False), (12, True)
-    // ]);
-
-    // let g = ImplicationGraph::from(&[
-    //     ( 4, &[1]),
-    //     ( 8, &[1]),
-    //     ( 9, &[3, 7, 8]),
-    //     (11, &[2]),
-    //     (12, &[1, 8])
-    // ]);
-
-    // let clause = learn_conflict_clause(9, &sln, &g);
-    // assert!(clause.len() == 3);
-    // assert!(clause.iter().any(|t| *t == Not(3)), "Clause must contain ~3");
-    // assert!(clause.iter().any(|t| *t == Not(7)), "Clause must contain ~7");
-    // assert!(clause.iter().any(|t| *t == Lit(8)), "Clause must contain 8");
-    panic!("Re-enable this test!")
-}
 
 // ----------------------------------------------------------------------------
 //
@@ -241,7 +202,7 @@ fn try_assignment(var: Var,
 //    debug!("Solution: {:?}", sln);
 //    debug!("Unset Vars: {:?}", vars);
 
-    match propagate(sln, var, val, exp, g) {
+    match propagate(sln, state.stack.len()+1, var, val, exp, g) {
         // Yay - the assignment of var = val was valid. Time to update the 
         // bookkeeping. 
         PropagationResult::Success (implications) => {
@@ -377,6 +338,8 @@ impl SolveState {
 
 #[test]
 fn stack_unwound_to_expected_point() {
+    use solver::implication_graph;
+
     let mut state = SolveState {
         unassigned_vars: VarSet::new(),
         implications: ImplicationGraph::new(),
@@ -384,35 +347,45 @@ fn stack_unwound_to_expected_point() {
         stack: DecisionStack::new()
     };
 
+    // Create a 
     for (level, x) in range_step(1, 11, 2).enumerate() {
         state.push(x, True);
         state.mut_peek().unwrap().implications = vec![x, x+1];
         state.solution.set(x, True);
         state.solution.set(x+1, False);
-        // TODO: fix this
         state.implications.insert(level, x, True, &[]);
         state.implications.insert(level, x+1, False, &[(x,True)]);
     }
 
+//    implication_graph::dump_graph("stack_unwind.dot", &state.implications);
+
+    // roll back the decision stack such that all of the supplied variables 
+    // are unset.
     let missing_vars : VarSet = FromIterator::from_iter(
         [10us, 5us, 8us].iter().map(|x| *x));
 
+    // check that the unwind returns the last decision variable it unset 
+    // during the rollback
     let (var, val) = state.unwind(missing_vars);
     assert!(var == 5);
     assert!(val == True);
 
+    // Check that the decision stack is now the size we expect from a 
+    // post-rollback stack
     assert!(state.stack.len() == 2);
     
-    let expected_vars : VarSet = FromIterator::from_iter(range(5us, 11us));
-    assert!(state.unassigned_vars == expected_vars, 
-            "Expected {:?}, got {:?}", expected_vars, state.unassigned_vars);
-
+    // assert that all variables prior to the rollback point are still 
+    // assigned 
     assert!(range(1, 5).all(|n| state.solution[n] != Unassigned));
-    assert!(range(5, 11).all(|n| state.solution[n] == Unassigned));
-    //assert!(range(5, 11).all(|n| state.implications.get_roots(n) == vec![]));
-    panic!("re-enable me");
 
-    assert!(state.stack.len() == 2);
+    // assert that all variables after the rollback point have been unassigned 
+    // and their implications have been deleted
+    assert!(range(5, 11).all(|n| state.solution[n] == Unassigned));
+    assert!(range(5, 11).all(|n| !state.implications.has(n)));
+
+    assert!(4 == state.implications.len(), 
+        "Expected a 4-element implication graph, got {:?}", 
+        state.implications.len());
 }
 
 /**
@@ -458,8 +431,8 @@ pub fn solve(exp: &Expression,
             },
 
             PropagationResult::Contradiction (new_clauses, missing_vars) => {
-                for c in new_clauses.iter() {
-                    e.add(c.as_slice());
+                for c in new_clauses.iter().map(|x| x.clone()) {
+                    e.add_clause(c);
                 }
                 let (var_p, val_p) = state.unwind(missing_vars);
                 next_move = SolverMove::Retry(var_p, val_p);
@@ -623,7 +596,7 @@ enum PropagationResult {
      * the conflict expression may have already been reset by cleanup code in 
      * the propagation routine.)
      */
-    Contradiction (Vec<Vec<Term>>, VarSet),
+    Contradiction (Vec<Clause>, VarSet),
 
     /**
      * The propagation succeded, and has returned the deduced implications.
@@ -644,10 +617,19 @@ impl PropagationResult {
     }
 }
 
+static mut dump_idx : usize = 0us;
+
+unsafe fn get_dump_idx() -> usize {
+    let r = dump_idx;
+    dump_idx = dump_idx + 1;
+    r
+}
+
 /**
  * Propagates the logical consequences of the current solution.
  */
-fn propagate(sln: &mut Solution, 
+fn propagate(sln: &mut Solution,
+             level: usize,
              seed_var: Var, 
              seed_val: SolutionValue, 
              e: &Expression,
@@ -656,11 +638,12 @@ fn propagate(sln: &mut Solution,
     let mut implications = ImplicationMap::new();
     let mut queue : Vec<(Var, SolutionValue)> = Vec::new();
     let mut conflicts = VarSet::new();
-    let mut conflict_clauses : Vec<Vec<Term>> = Vec::new(); 
+    let mut conflict_clauses : Vec<Clause> = Vec::new(); 
     let mut clause_vars = VarSet::new();
 
     queue.push((seed_var, seed_val));
     implications.add(seed_var, seed_val);
+    g.insert(level, seed_var, seed_val, &[]);
 
     while !queue.is_empty() {
         let (var, val) = queue.pop().unwrap();
@@ -675,7 +658,7 @@ fn propagate(sln: &mut Solution,
         for clause in e.clauses_containing(var) {
             match analyse_clause(clause, sln) {
                 ClauseAnalysis::IsUnit (term) => {
-//                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
+                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
                     let v = term.var();
 
                     if conflicts.contains(&v) {
@@ -688,8 +671,15 @@ fn propagate(sln: &mut Solution,
                         Not (_) => False
                     };
 
-                  debug!("\t\tDeduced that {:?} = {:?}", v, deduced_value);
-                    // g.add_from_clause(v, clause);
+                    debug!("\t\tDeduced that {:?} = {:?}", v, deduced_value);
+                    let roots : Vec<(Var, SolutionValue)> = 
+                        clause.iter()
+                              .map(|&t| t.var())
+                              .filter(|&term_var| term_var != v)
+                              .map(|v| (v, sln[v]))
+                              .collect();
+
+                    g.insert(level, v, deduced_value, roots.as_slice());
                     // TODO: fixme
 
                     // check for a contradiction - have we aleady deduced that 
@@ -707,7 +697,13 @@ fn propagate(sln: &mut Solution,
                             if x != deduced_value {
                                 debug!("\t\tDetected contradiction on {:?}!", v);
 
-                                let conflict_clause = learn_conflict_clause(v, sln, g);
+                            unsafe {
+                                let filename = format!("{:016x}.dot", get_dump_idx());
+                                debug!("Dumping graph to: {:?}", filename);
+                                dump_graph(&filename, g);
+                            }
+
+                                let conflict_clause = g.learn_conflict_clause(v, (seed_var, seed_val));
                                 debug!("\t\tLearned {:?}", conflict_clause);
                                 
                                 sln.unset(v);
@@ -729,7 +725,8 @@ fn propagate(sln: &mut Solution,
                     // oh, dear. All variables in the term have values and the
                     // clause evaluates to false. Bail out and let the caller 
                     // know that this can't possibly be the right answer.
-                    debug!("\t\tClause {:?} evaluates to false. Ooops.", clause);
+                    println!("\t\tClause {:?} evaluates to false. Ooops.", clause);
+                    println!("\t\tCleaning up {:?}", implications);
                     for v in implications.vars() {
                         let val = sln[*v];
                         sln.unset(*v);
@@ -766,7 +763,7 @@ fn propagation_deduces_true_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Lit(3), Lit(4)]]);
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
     let mut g = ImplicationGraph::new();
-    match propagate(&mut sln, 4, False, &exp, &mut g) {
+    match propagate(&mut sln, 1, 4, False, &exp, &mut g) {
         PropagationResult::Success (mut implications) => {
             implications.sort();
             assert!(implications.as_slice() == [3us, 4us], 
@@ -783,7 +780,7 @@ fn propagation_deduces_false_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Not(3), Lit(4)]]);
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
     let mut g = ImplicationGraph::new();
-    match propagate(&mut sln, 4, False, &exp, &mut g) {
+    match propagate(&mut sln, 1, 4, False, &exp, &mut g) {
         PropagationResult::Success (mut implications) => {
             implications.sort();
             assert!(implications.as_slice() == [3us, 4us], 
@@ -803,16 +800,19 @@ fn propagation_detects_contradictions() {
     ]);
 
     let mut sln = Solution::from(3, &[(1, False)]);
-    let mut g = ImplicationGraph::new();
+    let mut g = ImplicationGraph::from(&[
+        (1, (1, False), &[])
+    ]);
     
-    match propagate(&mut sln, 2, False, &exp, &mut g) {
+    match propagate(&mut sln, g.len()+1, 2, False, &exp, &mut g) {
         PropagationResult::Contradiction (mut c, mut vs) => {
-            let expected = vec!(vec!(Lit(1), Lit(2)));
+            let expected = vec!(Lit(1), Lit(2));
             assert!(c.len() == 1, "Expected a single-element list");
-            c[0].sort();
-            assert!(c == expected, 
+            let mut clause : Vec<Term> = c[0].iter().map(|&x|x).collect();
+            clause.sort();
+            assert!(clause == expected, 
                     "Expected a conflict clause like {0:?}, got {1:?}", 
-                    expected, c);
+                    expected, clause);
         },
         other => panic!("Unexpected result from propagate(): {:?}", other)
     }
@@ -830,12 +830,19 @@ fn propagation_detects_evaluation_to_false() {
     ]);
 
     let mut sln = Solution::from(4, &[(1, False), (2, False)]);
-    let mut g = ImplicationGraph::new();
+    let mut g = ImplicationGraph::from(&[
+        (1, (1, False), &[]),
+        (2, (2, False), &[])
+    ]);
 
-    match propagate(&mut sln, 3, False, &exp, &mut g) {
+    match propagate(&mut sln, g.len()+1, 3, False, &exp, &mut g) {
         PropagationResult::EvaluatesToFalse => {},
         other => panic!("Unexpected result from propagate(): {:?}", other)
     }
 
-    assert!(g.is_empty());
+    println!("Graph: {:?}", g);
+
+    assert!(g.len() == 2);
+    assert!(g.has(1));
+    assert!(g.has(2));
 }

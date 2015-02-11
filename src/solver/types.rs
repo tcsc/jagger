@@ -262,7 +262,7 @@ impl ops::Index<Var> for Solution {
 //
 // ----------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Term { Lit(Var), Not(Var) }
 
 impl Term {
@@ -345,6 +345,10 @@ impl Clause {
     pub fn terms(&self) -> &[Term] {
         self.terms.as_slice()
     }
+
+    pub fn iter(&self) -> slice::Iter<Term> {
+        self.terms.iter()
+    }
 }
 
 impl FromIterator<Term> for Clause {
@@ -425,7 +429,7 @@ impl Expression {
         let mut exp = Expression::new();
 
         for clause in clauses.iter() {
-            exp.add(*clause);
+            exp.add_from(*clause);
         }
         exp
     }
@@ -463,10 +467,14 @@ impl Expression {
         True
     }
 
-    pub fn add(&mut self, clause: &[Term]) {
-        self.clauses.push(Clause::from(clause));
+    pub fn add_from(&mut self, clause: &[Term]) {
+        self.add_clause(Clause::from(clause));
+    }
+
+    pub fn add_clause(&mut self, clause: Clause) {
+        self.clauses.push(clause);
         let idx = self.clauses.len()-1;
-        for t in clause.iter() {
+        for t in self.clauses[idx].iter() {
             let v = t.var();
             let mut added = true;
             match self.index.get_mut(&v) {
@@ -509,8 +517,6 @@ impl ops::Index<usize> for Expression {
 }
 
 impl ops::IndexMut<usize> for Expression {
-    type Output = Clause;
-
     fn index_mut<'a>(&'a mut self, index: &usize) -> &'a mut Clause {
         &mut self.clauses[*index]
     }

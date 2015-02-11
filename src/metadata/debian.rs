@@ -285,8 +285,8 @@ fn extract_epoch<'a>(s: &'a str) -> VerResult<(isize, &'a str)> {
         Some(n) => {
             let text = s.slice_to(n);
             let epoch = match FromStr::from_str(text) {
-                Some(e) => e,
-                None => return Err(VersionError::epoch(text))
+                Ok(e) => e,
+                Err(_) => return Err(VersionError::epoch(text))
             };
             let remainder = s.slice_from(n+1);
             Ok((epoch, remainder))

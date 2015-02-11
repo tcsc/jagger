@@ -6,6 +6,7 @@ use std::cmp::Ordering;
 use std::iter::{range_step, repeat};
 use std::iter::FromIterator;
 use std::default::Default;
+use std::slice;
 
 use test::Bencher;
 
@@ -18,7 +19,7 @@ use test::Bencher;
  * 10,000 items; but your mileage may vary depending on the size of 
  * your cache and the sixe of the elements you store.
  */
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VecSet<T> {
     items: Vec<T>
 }
@@ -75,11 +76,27 @@ impl<T: Ord> VecSet<T> {
         return false;
     }
 
+    pub fn contains(&self, v: &T) -> bool {
+        if self.items.is_empty() { return false }
+
+        let index = lower_bound(self.items.as_slice(), v);
+        if (index < self.items.len()) && (self.items[index] == *v) {
+            true 
+        }
+        else {
+            false
+        }    
+    }
+
     /**
      * 
      */
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn iter(&self) -> slice::Iter<T> {
+        self.items.iter()
     }
 }
 
