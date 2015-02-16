@@ -57,10 +57,11 @@ type Assignments = Vec<Assignment>;
 //
 // ----------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct Implication {
 	level: usize,
-	roots: Vec<Assignment>
+	roots: Vec<Assignment>,
+    consequences: Vec<Assignment>
 }
 
 // ----------------------------------------------------------------------------
@@ -69,7 +70,13 @@ struct Implication {
 
 type GraphImpl = HashMap<Assignment, Implication>;
 
-#[derive(Debug)]
+/**
+ * \todo Derive a more cache-friendly representation of the implication graph
+ *       that will still let us represent two separate implication trees for a
+ *       conflict. (Using an array indexed by the variable won't do that, but
+ *       the real answer shoudl lie somewhere along that path).
+ */
+#[derive(Debug, PartialEq, Eq)]
 pub struct ImplicationGraph {
     map: GraphImpl
 }
@@ -88,6 +95,9 @@ impl ImplicationGraph {
         result
     }
 
+    /**
+     * \pre All roots must exist in the graph.
+     */
     pub fn insert(&mut self,
     	          level: usize,
     	          var: Var,
@@ -95,23 +105,64 @@ impl ImplicationGraph {
     			  roots: &[Asmt])
     {
         let asmt = Assignment(var, val);
-        let i = Implication {
-                level: level,
-                roots: roots.iter()
-                            .map(mk_assignment)
-                            .collect()
-                };
+        let mut rs = Vec::with_capacity(roots.len());
 
-        match self.map.insert(asmt, i) {
+        for &(rvar, rval) in roots {
+            let root = Assignment(rvar, rval);
+            rs.push(root);
+            self.map.get_mut(&root).unwrap()
+                    .consequences.push(asmt);
+        }
+
+        let implication = Implication {
+            level: level,
+            roots: rs,
+            consequences: Vec::new()
+        };
+
+        match self.map.insert(asmt, implication) {
             None => {},
             Some(_) => {
                 panic!("Assignment for {:?} already exists!", asmt);
+                // note that we have already screwed the graph by adding the new
+                // assignment to other nodes' consequences list at this point.
             }
         }
     }
 
-    pub fn remove(&mut self, var: Var, val: SolutionValue) {
-    	self.map.remove(&Assignment(var, val));
+    /**
+     * Strips an assignment and all of its recursive consequences from the
+     * implication graph. Returns a list of all the variables removed from
+     * the graph.
+     */
+    pub fn strip(&mut self, var: Var, val: SolutionValue) -> Vec<Var> {
+        let mut queue = vec!(Assignment(var, val));
+        let mut result = Vec::new();
+
+        // while we still have assignments to check...
+        while !queue.is_empty() {
+            let a = queue.pop().unwrap();
+
+            match self.map.remove(&a) {
+                None => {},
+                Some(implication) => {
+                    // add the consequences of this assignment to the queue of
+                    // nodes to remove
+                    queue.push_all(implication.consequences.as_slice());
+
+                    // remove this assignment from our roots' consequences
+                    for r in implication.roots.iter() {
+                        match self.map.get_mut(r) {
+                            Some(root) => {
+                                root.consequences.retain(|&x| x != a);
+                            },
+                            None => {}
+                        }
+                    }
+                }
+            }
+        }
+        result
     }
 
     pub fn learn_conflict_clause(&self, conflict: Var, decision: Asmt) -> Clause {
@@ -177,6 +228,78 @@ fn adding_new_node_increases_length() {
     assert!(!g.is_empty());
 }
 
+#[test]
+fn inserting_nodes_updates_consequences_and_roots() {
+    let g = test_graph();
+    let key = Assignment(3, True);
+    let i = g.map.get(&key).unwrap();
+
+    // assert that the new key has the roots we expect
+    println!("Checking that {:?} appears in {:?}", Assignment(1, False), i.roots);
+    i.roots.iter().find(|&x| *x == Assignment(1, False)).unwrap();
+
+    println!("Checking that {:?} appears in {:?}", Assignment(7, False), i.roots);
+    i.roots.iter().find(|&x| *x == Assignment(7, False)).unwrap();
+
+    // assert that the new key appears in it's roots consequences
+    println!("Checking that {:?} appears in the consequences of {:?}",
+        key, Assignment(1, False));
+    assert!(g.map.get(&Assignment(1, False)).unwrap()
+                 .consequences.iter()
+                 .find(|&x| *x == key)
+                 .is_some());
+
+    println!("Checking that {:?} appears in the consequences of {:?}",
+        key, Assignment(7, False));
+    assert!(g.map.get(&Assignment(7, False)).unwrap()
+                 .consequences.iter()
+                 .find(|&x| *x == key)
+                 .is_some());
+}
+
+#[test]
+fn removing_nodes_updates_consequences_of_roots() {
+    let mut g = test_graph();
+    let key = Assignment(3, True);
+    let i = g.strip(4, True);
+
+    // pre-strip 4+
+    //            8
+    //              \
+    //       2        5+
+    //     /   \    /
+    //   1       4 *      5-
+    //     \   /    \   /
+    //       3        6
+    //     /        /
+    //   7        9
+
+    // post-strip
+    //            8
+    //       2
+    //     /
+    //   1
+    //     \
+    //       3
+    //     /
+    //   7        9
+
+    let expected = ImplicationGraph::from(&[
+        (1, (7, False), &[]),
+        (2, (8, False), &[]),
+        (3, (9, False), &[]),
+        (4, (1, False), &[]),
+        (4, (2, True),  &[(1, False)]),
+        (4, (3, True),  &[(1, False), (7, False)])
+    ]);
+
+    dump_graph("remove_expected.dot", &expected);
+    dump_graph("remove_actual.dot", &g);
+
+
+    assert!(g == expected);
+}
+
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
@@ -236,6 +359,19 @@ fn learn_conflict_clause(g: &GraphImpl, v: Var, decision: Assignment) -> Clause 
         conflict_clause.iter().map(|&x| x))
 }
 
+/**
+ * Collects the set of nodes in the conflict side of the cut.
+ */
+fn mk_conflict_set(a: &Vec<Assignments>,
+                   b: &Vec<Assignments>,
+                   uip: Assignment) -> VecSet<Assignment> {
+    let mut result = VecSet::new();
+    for v in a.iter().chain(b.iter()) {
+        result.extend(v.iter().take_while(|&x| *x != uip).map(|&x| x));
+    }
+    result
+}
+
 #[test]
 fn learned_clause_considers_all_nodes_in_conflict_side() {
     //       13
@@ -260,7 +396,7 @@ fn learned_clause_considers_all_nodes_in_conflict_side() {
         (1, (15, False), &[]),
         (1, ( 2, False), &[(1, False)]),
         (1, (11, False), &[(2, False)]),
-        (1, (12, False), &[(12, False)]),
+        (1, (12, False), &[(11, False)]),
         (1, ( 3, False), &[(2, False)]),
         (1, ( 8, False), &[(3, False)]),
         (1, ( 7, False), &[(8, False), (15, False)]),
@@ -309,19 +445,6 @@ fn learn_clause_finds_expected_clause_from_princeton_example() {
     assert!(clause.iter().any(|t| *t == Not(4)), "Clause must contain ~4");
     assert!(clause.iter().any(|t| *t == Lit(8)), "Clause must contain 8");
     assert!(clause.iter().any(|t| *t == Lit(9)), "Clause must contain 9");
-}
-
-/**
- * Collects the set of nodes in the conflict side of the cut.
- */
-fn mk_conflict_set(a: &Vec<Assignments>,
-                   b: &Vec<Assignments>,
-                   uip: Assignment) -> VecSet<Assignment> {
-    let mut result = VecSet::new();
-    for v in a.iter().chain(b.iter()) {
-        result.extend(v.iter().take_while(|&x| *x != uip).map(|&x| x));
-    }
-    result
 }
 
 #[test]
