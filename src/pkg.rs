@@ -4,7 +4,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use self::VersionExpression::*;
 
-pub type Ordinal = usize; 
+pub type Ordinal = usize;
 
 #[derive(Clone, Hash)]
 pub enum VersionExpression {
@@ -24,11 +24,11 @@ pub fn gte(n: Ordinal) -> VersionExpression { VersionExpression::Gte(n) }
 pub fn lt(n: Ordinal) -> VersionExpression { VersionExpression::Lt(n) }
 pub fn lte(n: Ordinal) -> VersionExpression { VersionExpression::Lte(n) }
 
-pub fn and(a: VersionExpression, b: VersionExpression) -> VersionExpression { 
-    VersionExpression::And(box a, box b) 
+pub fn and(a: VersionExpression, b: VersionExpression) -> VersionExpression {
+    VersionExpression::And(box a, box b)
 }
 
-pub fn or(a: VersionExpression, b: VersionExpression) -> VersionExpression { 
+pub fn or(a: VersionExpression, b: VersionExpression) -> VersionExpression {
     VersionExpression::Or(box a, box b)
 }
 
@@ -132,7 +132,7 @@ fn version_expression_lte()  {
 
 #[test]
 fn version_expression_boolean_and()  {
-    let v = and(gt(42), lt(44)); 
+    let v = and(gt(42), lt(44));
     assert!(v.matches(43));
     assert!(!v.matches(41));
     assert!(!v.matches(42));
@@ -142,7 +142,7 @@ fn version_expression_boolean_and()  {
 
 #[test]
 fn version_expression_boolean_or()  {
-    let v = or(eq(1), eq(163)); 
+    let v = or(eq(1), eq(163));
     assert!(v.matches(1));
     assert!(!v.matches(2));
 
@@ -157,12 +157,12 @@ fn version_expression_boolean_or()  {
 #[derive(Clone, Eq, Hash)]
 pub struct PkgExp {
     name: String,
-    version: VersionExpression 
+    version: VersionExpression
 }
 
 impl PkgExp {
     pub fn new(name: &str, version: VersionExpression) -> PkgExp {
-        PkgExp { 
+        PkgExp {
             name: String::from_str(name),
             version: version
         }
@@ -185,7 +185,7 @@ impl fmt::Show for PkgExp {
 // Package - An abstract representation of a package
 // ----------------------------------------------------------------------------
 
-#[derive(Show, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum State {
     Installed,
     Available,
@@ -201,19 +201,19 @@ pub struct Package {
      */
     name: String,
 
-    /** 
-     * The ordinal version (i.e. the index of this package in an ordered list 
-     * of all known versions of this package) of a package. Using this value 
-     * rather than a package format-specific version identifier means that the 
-     * solver doesn't have care about the specifics of versioning in a given 
-     * package format. 
+    /**
+     * The ordinal version (i.e. the index of this package in an ordered list
+     * of all known versions of this package) of a package. Using this value
+     * rather than a package format-specific version identifier means that the
+     * solver doesn't have care about the specifics of versioning in a given
+     * package format.
      */
     ordinal: Ordinal,
 
     state: State,
 
     requires: Vec<PkgExp>,
-    conflicts: Vec<PkgExp> 
+    conflicts: Vec<PkgExp>
 }
 
 impl Package {
@@ -226,17 +226,17 @@ impl Package {
     }
 
     pub fn new(name: &str, ordinal: Ordinal, state: State) -> Package {
-        Package { 
+        Package {
             name: String::from_str(name),
             ordinal: ordinal,
             state: state,
             requires: Vec::new(),
-            conflicts: Vec::new() 
+            conflicts: Vec::new()
         }
     }
 
     /**
-     * Adds a requirement to the 
+     * Adds a requirement to the
      */
     pub fn add_requirement(&mut self, name: &str, ver: VersionExpression) {
         self.requires.push(PkgExp::new(name, ver));
@@ -258,8 +258,8 @@ impl Package {
     }
 
     /**
-     * Checks to see if this package meets the requirements of a given package 
-     * expression. 
+     * Checks to see if this package meets the requirements of a given package
+     * expression.
      */
     pub fn matches(&self, exp: &PkgExp) -> bool {
         (self.name == exp.name) && exp.version.matches(self.ordinal)
@@ -276,7 +276,7 @@ impl PartialEq for Package {
         if self.ordinal != other.ordinal { return false };
         if self.requires.as_slice() != other.requires.as_slice() { return false };
         if self.conflicts.as_slice() != other.conflicts.as_slice() { return false };
-        true 
+        true
     }
 }
 
@@ -298,7 +298,7 @@ impl Ord for Package {
         }
         else if self.name > other.name {
             Ordering::Greater
-        } 
+        }
         else {
             match self.ordinal {
                 n if n < other.ordinal => Ordering::Less,
@@ -332,10 +332,10 @@ impl fmt::Show for Package {
 // ----------------------------------------------------------------------------
 
 /**
- * The store for (and ultimate owner of) all the package objects. 
+ * The store for (and ultimate owner of) all the package objects.
  */
 pub struct PkgDb {
-    packages: Vec<Package>   
+    packages: Vec<Package>
 }
 
 impl PkgDb {
@@ -369,14 +369,14 @@ impl PkgDb {
     }
 
     /**
-     * Selects a set of packages that match a given name and version 
+     * Selects a set of packages that match a given name and version
      * expression.
      */
     pub fn select_exp<'a>(&'a self, spec: &PkgExp) -> Vec<&'a Package> {
         self.packages.iter()
                      .filter(|p| p.matches(spec))
                      .collect()
-    } 
+    }
 }
 
 
@@ -387,8 +387,8 @@ fn pkgdb_select_non_existant_package_name_returns_empty_vector() {
 }
 
 #[cfg(test)]
-fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where 
-    F: FnMut(usize) -> Package 
+fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where
+    F: FnMut(usize) -> Package
 {
     FromIterator::from_iter(range(0, n).map(f))
 }
@@ -405,7 +405,7 @@ fn pkgdb_empty_select_returns_empty_vector() {
 #[test]
 fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
-    db.add_packages(pkg_vec(5, |n| { 
+    db.add_packages(pkg_vec(5, |n| {
         Package::new("alpha", n, State::Available)
     }).as_slice());
     db.add_packages(pkg_vec(10, |n| {
@@ -416,6 +416,6 @@ fn pkgdb_select_returns_expected_packages() {
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
     let actual = db.select("beta", gte(6));
 
-    assert!(expected.as_slice() == actual.as_slice(), 
+    assert!(expected.as_slice() == actual.as_slice(),
             "expected: {:?}, got: {:?}", expected, actual);
 }

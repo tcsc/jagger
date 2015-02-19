@@ -110,8 +110,10 @@ impl ImplicationGraph {
         for &(rvar, rval) in roots {
             let root = Assignment(rvar, rval);
             rs.push(root);
-            self.map.get_mut(&root).unwrap()
-                    .consequences.push(asmt);
+            match self.map.get_mut(&root) {
+                None => panic!("missing root {:?} for assignment {:?}", root, (var, val)),
+                Some(i) => { i.consequences.push(asmt); }
+            }
         }
 
         let implication = Implication {
@@ -142,6 +144,8 @@ impl ImplicationGraph {
         // while we still have assignments to check...
         while !queue.is_empty() {
             let a = queue.pop().unwrap();
+            let Assignment(var, _) = a;
+            result.push(var);
 
             match self.map.remove(&a) {
                 None => {},

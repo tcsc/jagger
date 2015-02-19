@@ -6,8 +6,8 @@ use std::str::FromStr;
 use std::cmp;
 use std::cmp::Ordering::*;
 
-#[derive(PartialEq, Eq, Show)]
-pub enum ArchError { 
+#[derive(PartialEq, Eq, Debug)]
+pub enum ArchError {
     UnknownAlias (String),
     InvalidArchitecture (String),
     InvalidSystem (String),
@@ -17,7 +17,7 @@ pub enum ArchError {
 
 pub type ArchResult<T> = Result<T, ArchError>;
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum System {
     AnySystem,
     Linux,
@@ -26,13 +26,13 @@ pub enum System {
     CustomSystem (String)
 }
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Vendor {
     AnyVendor,
     NamedVendor (String)
 }
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Cpu {
     AnyCpu,
     I386,
@@ -40,7 +40,7 @@ pub enum Cpu {
     CustomCpu (String)
 }
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Architecture {
     system: System,
     vendor: Vendor,
@@ -49,7 +49,7 @@ pub struct Architecture {
 
 impl Architecture {
     pub fn is_compatible_with(&self, other: &Architecture) -> bool {
-        let compatible_system = self.system == AnySystem || 
+        let compatible_system = self.system == AnySystem ||
                                 other.system == AnySystem ||
                                 self.system == other.system;
         let compatible_vendor = self.vendor == AnyVendor ||
@@ -136,7 +136,7 @@ fn any_vendor_is_a_special_case() {
  * Parses a string describing an archtecture into an architecture struct.
  */
 fn parse_arch(a: &str) -> ArchResult<Architecture> {
-    if a == "" { 
+    if a == "" {
         Err(ArchError::InvalidArchitecture(String::from_str(a)))
     }
     else {
@@ -159,8 +159,8 @@ fn parse_arch(a: &str) -> ArchResult<Architecture> {
 
 #[test]
 fn parse_any() {
-    let expected = Architecture { system: AnySystem, 
-                                  vendor: AnyVendor, 
+    let expected = Architecture { system: AnySystem,
+                                  vendor: AnyVendor,
                                   cpu: AnyCpu };
     assert!(parse_arch("any") == Ok(expected));
 }
@@ -180,36 +180,36 @@ fn too_many_parts_makes_an_architecture_invalid() {
 
 #[test]
 fn parse_windows_no_vendor() {
-    let expected = Architecture { system: Windows, 
-                                  vendor: AnyVendor, 
+    let expected = Architecture { system: Windows,
+                                  vendor: AnyVendor,
                                   cpu: I386 };
     let result = parse_arch("mswindows-i386");
     assert!(result.is_ok());
-    assert!(result == Ok(expected));      
+    assert!(result == Ok(expected));
 }
 
 #[test]
 fn parse_windows_with_vendor() {
     let expected = Architecture {
-        system: Windows, 
-        vendor: NamedVendor(String::from_str("somevendor")), 
+        system: Windows,
+        vendor: NamedVendor(String::from_str("somevendor")),
         cpu: I386
     };
     let result = parse_arch("mswindows-somevendor-i386");
     assert!(result.is_ok());
-    assert!(result == Ok(expected));      
+    assert!(result == Ok(expected));
 }
 
 #[test]
 fn parse_windows_64() {
     let expected = Architecture {
-        system: Windows, 
-        vendor: AnyVendor, 
+        system: Windows,
+        vendor: AnyVendor,
         cpu: AMD64
     };
     let result = parse_arch("mswindows-amd64");
     assert!(result.is_ok());
-    assert!(result == Ok(expected));      
+    assert!(result == Ok(expected));
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn empty_system_is_an_error() {
 }
 
 // ------------------------------------------------------------------------
-// Version 
+// Version
 // ------------------------------------------------------------------------
 
 #[derive(PartialEq, Eq, Show, Clone)]
@@ -236,8 +236,8 @@ impl VersionChunk {
 }
 
 /// A package version consisting of an "upstream version" (the version of
-/// the software being packaged) and the "package revision" which is the 
-/// version of the enclosing package. 
+/// the software being packaged) and the "package revision" which is the
+/// version of the enclosing package.
 
 #[derive(Eq, Show, Clone)]
 pub struct Version {
@@ -254,10 +254,10 @@ pub enum VersionError {
 }
 
 impl VersionError {
-    fn invalid(s: &str) -> VersionError { 
+    fn invalid(s: &str) -> VersionError {
         VersionError::InvalidVersion (String::from_str(s))
     }
-    fn epoch(s: &str) -> VersionError { 
+    fn epoch(s: &str) -> VersionError {
         VersionError::InvalidEpoch(s.to_string())
     }
 }
@@ -267,18 +267,18 @@ pub type VerResult<T> = Result<T, VersionError>;
 /***
  * Extracts and parses the epoch value from a version string.
  *
- * On success, extract_epoch returns a pair containing the epoch integer and a 
- * slice containing the remainder of the supplied string. A version with no 
- * epoch is assumed to have epoch 0. 
+ * On success, extract_epoch returns a pair containing the epoch integer and a
+ * slice containing the remainder of the supplied string. A version with no
+ * epoch is assumed to have epoch 0.
  *
  * On failure it will return a VersionError.
  *
- * For example, 
+ * For example,
  * ```
  * assert!(extract_epoch("42:1.2") == Ok((42, "1.2")));
  * assert!(extract_epoch("1.2") == Ok((0, "1.2")));
  * ```
- */ 
+ */
 fn extract_epoch<'a>(s: &'a str) -> VerResult<(isize, &'a str)> {
     match s.find(':') {
         None => Ok((0, s)),
@@ -318,7 +318,7 @@ fn non_integer_epoch_is_an_error() {
 
 /**
  * Extracts the upstream version from a buffer, assuming any epoch text has
- * already been removed. 
+ * already been removed.
  */
 fn extract_upstream<'a>(s: &'a str) -> Option<(&'a str, &'a str)> {
     match s.rfind('-') {
@@ -380,7 +380,7 @@ fn upstream_versions_with_trailing_chars_are_ok() {
 impl Version {
     // Attempts to parse a debian-style package version string.
     //
-    // The version string contains an "upstream version" number and a 
+    // The version string contains an "upstream version" number and a
     // "package version" number, separated by a string.
     pub fn parse(v: &str) -> VerResult<Version> {
         let (epoch, text) = try!(extract_epoch(v));
@@ -397,7 +397,7 @@ impl Version {
 
 /**
  * Implements the debian version string comparison algorithm. This is basically
- * the normal ascii ordering, except that a tilde will sort before any other 
+ * the normal ascii ordering, except that a tilde will sort before any other
  * character, living or dead.
  */
 fn debian_cmp(a: &str, b: &str) -> cmp::Ordering {
@@ -410,8 +410,8 @@ fn debian_cmp(a: &str, b: &str) -> cmp::Ordering {
         }
     }
 
-    // if we get to here we have exhausted at least one string. If we have 
-    // exhausted both strings, then the strings are equal. If not, then the 
+    // if we get to here we have exhausted at least one string. If we have
+    // exhausted both strings, then the strings are equal. If not, then the
     // shorter string should always go first
 
     match (a.len() as isize) - (b.len() as isize) {
@@ -476,16 +476,16 @@ impl PartialOrd for Version {
                     }
                 };
 
-                // If we get to here, then the chunks are the same up to the 
-                // point that at least one of the upstream version chunks is 
-                // exhausted. It's possible that one string of chunks is 
-                // longer, and the longer one should be considered larger 
+                // If we get to here, then the chunks are the same up to the
+                // point that at least one of the upstream version chunks is
+                // exhausted. It's possible that one string of chunks is
+                // longer, and the longer one should be considered larger
                 // (e.g. 1.2.3 vs 1.2.3.4).
                 match (self.chunks.len() as isize) - (other.chunks.len() as isize) {
                     n if n < 0 => return Some(Less),
                     n if n > 0 => return Some(Greater),
                     _ => {
-                        // If both chunk strings are the same length, then 
+                        // If both chunk strings are the same length, then
                         // compare the package revision and return that
                         let rval = debian_cmp(self.revision.as_slice(), other.revision.as_slice());
                         return Some(rval);
@@ -505,7 +505,7 @@ fn dotted_decimal_versions_are_valid() {
                       VersionChunk::new(".", 2),
                       VersionChunk::new(".", 3),
                       VersionChunk::new(".", 4)],
-        revision: String::from_str("5") 
+        revision: String::from_str("5")
     });
     let actual = Version::parse("1.2.3.4-5");
     assert!(expected == actual, "Expected: {:?}, got: {:?}", expected, actual);
@@ -513,10 +513,10 @@ fn dotted_decimal_versions_are_valid() {
 
 #[test]
 fn lexical_versions_are_valid() {
-    let expected = Ok(Version { 
+    let expected = Ok(Version {
         epoch: 0,
         chunks: vec![ VersionChunk::new("someversion", 0) ],
-        revision: String::from_str("1") 
+        revision: String::from_str("1")
     });
     let actual = Version::parse("someversion-1");
     assert!(expected == actual, "Expected: {:?}, got: {:?}", expected, actual);
@@ -548,13 +548,13 @@ fn versions_are_comparable() {
 #[test]
 fn epochs_are_compared_first() {
     let a = Version {
-        epoch: 1, 
-        chunks: vec![VersionChunk::new("a", 1)], 
+        epoch: 1,
+        chunks: vec![VersionChunk::new("a", 1)],
         revision: String::from_str("")
     };
     let b = Version {
-        epoch: 2, 
-        chunks: vec![VersionChunk::new("a", 1)], 
+        epoch: 2,
+        chunks: vec![VersionChunk::new("a", 1)],
         revision: String::from_str("")
     };
     assert!(a < b);
@@ -565,13 +565,13 @@ fn epochs_are_compared_first() {
 #[test]
 fn upstream_versions_chunk_prefixes_are_compared() {
     let a = Version {
-        epoch: 0, 
-        chunks: vec![VersionChunk::new("a", 1)], 
+        epoch: 0,
+        chunks: vec![VersionChunk::new("a", 1)],
         revision: String::from_str("")
     };
     let b = Version {
-        epoch: 0, chunks: 
-        vec![VersionChunk::new("b", 1)], 
+        epoch: 0, chunks:
+        vec![VersionChunk::new("b", 1)],
         revision: String::from_str("")
     };
     assert!(a < b);
@@ -591,11 +591,11 @@ fn upstream_versions_chunk_numbers_are_compared() {
 fn upstream_version_superstring_wins() {
     let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("")};
     let b = Version {
-        epoch: 0, 
+        epoch: 0,
         chunks: vec![
             VersionChunk::new("a", 1),
-            VersionChunk::new("b", 2) 
-        ], 
+            VersionChunk::new("b", 2)
+        ],
         revision: String::from_str("")
     };
     assert!(a < b);

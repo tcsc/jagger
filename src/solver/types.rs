@@ -6,7 +6,7 @@ use std::iter::{FromIterator, repeat};
 use std::collections;
 use std::collections::{BTreeSet, HashMap, VecMap};
 
-use self::SolutionValue::{True, False, Unassigned};
+use self::SolutionValue::{True, False, Unassigned, Conflict};
 use self::Term::{Lit, Not};
 
 // ----------------------------------------------------------------------------
@@ -18,7 +18,7 @@ pub type Var = usize;
 //
 // ----------------------------------------------------------------------------
 
-#[derive(Clone, PartialEq, Eq, Show)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct VarSet(BTreeSet<Var>);
 
 impl VarSet {
@@ -46,7 +46,7 @@ impl VarSet {
 
     pub fn is_empty(&self) -> bool {
         let VarSet(ref this) = *self;
-        this.is_empty()   
+        this.is_empty()
     }
 }
 
@@ -67,8 +67,8 @@ impl Extend<Var> for VarSet {
 //
 // ----------------------------------------------------------------------------
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Show, Clone, Copy, Hash)]
-pub enum SolutionValue { Unassigned, True, False }
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
+pub enum SolutionValue { Unassigned, True, False, Conflict }
 
 impl SolutionValue {
     fn from_bool(val: bool) -> SolutionValue {
@@ -80,28 +80,32 @@ impl SolutionValue {
 
     fn as_bool(&self) -> bool {
         match *self {
-            Unassigned => panic!("Expected True or False"),
             True => true,
-            False => false
+            False => false,
+            otherwise => panic!("Expected True or False, got {:?}", otherwise)
         }
     }
 }
 
 /**
- * Slightly odd bitwise OR semantics that are set up to make it easier to 
- * analayse a collecton of terms by ORing their values together. The 
+ * Slightly odd bitwise OR semantics that are set up to make it easier to
+ * analayse a collecton of terms by ORing their values together. The
  * resulting truth table looks something like
  *
- *  OR         | True | False      | Unassigned
- *  ===========================================
- *  True       | True | True       | True
- *  False      | True | False      | Unassigned
- *  Unassigned | True | Unassigned | Unassigned
+ *  OR         | True     | False      | Unassigned | Conflict |
+ *  ============================================================
+ *  True       | True     | True       | True       | Conflict |
+ *  False      | True     | False      | Unassigned | Conflict |
+ *  Unassigned | True     | Unassigned | Unassigned | Conflict |
+ *  Conflict   | Conflict | Conflict   | Conflict   | Conflict |
  */
 impl ops::BitOr for SolutionValue {
     type Output = SolutionValue;
     fn bitor(self, rhs: SolutionValue) -> SolutionValue {
-        if self == True || rhs == True { 
+        if self == Conflict || rhs == Conflict {
+            Conflict
+        }
+        else if self == True || rhs == True {
             True
         }
         else if self == Unassigned || rhs == Unassigned {
@@ -134,6 +138,7 @@ impl ops::Not for SolutionValue {
     fn not(self) -> SolutionValue {
         match self {
             Unassigned => Unassigned,
+            Conflict => Conflict,
             True => False,
             False => True
         }
@@ -161,10 +166,10 @@ fn not_assigned_solution_behaves_like_boolean() {
  * every variable will have to have a value at some point anyway, and a vector
  * will be more memory & time efficient than a tree map. The tradeoff is that
  * while we will use less peak memory, we will use a smaller chunk for longer.
- * 
+ *
  * Note that the sollution could be further compressed by storing the values as
  * two-bit (e.g.: unassigned: 00, true: 01, false: 10) values packed into
- * larger cells. We'd need to actually benchmark this to see if the memory & 
+ * larger cells. We'd need to actually benchmark this to see if the memory &
  * cache efficiency is worth the extra pack & unpack code.
  */
 #[derive(PartialEq, Clone)]
@@ -177,8 +182,8 @@ impl<'a> Solution {
      * Creates an empty solution
      */
     pub fn new(n: usize) -> Solution {
-        Solution { 
-            values: FromIterator::from_iter(repeat(Unassigned).take(n+1)) 
+        Solution {
+            values: FromIterator::from_iter(repeat(Unassigned).take(n+1))
         }
     }
 
@@ -236,7 +241,7 @@ impl<'a> Solution {
 impl fmt::Show for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
-  
+
         try!(write!(f, "["));
         for (k, v) in self.values.iter().enumerate() {
             if *v == Unassigned {
@@ -253,8 +258,14 @@ impl fmt::Show for Solution {
 impl ops::Index<Var> for Solution {
     type Output = SolutionValue;
 
-    fn index<'a>(&'a self,  v: &Var) -> &'a SolutionValue {
+    fn index<'a>(&'a self, v: &Var) -> &'a SolutionValue {
         self.values.index(v)
+    }
+}
+
+impl ops::IndexMut<Var> for Solution {
+    fn index_mut<'a>(&'a mut self, v: &Var) -> &'a mut SolutionValue {
+        &mut self.values[*v]
     }
 }
 
@@ -277,7 +288,7 @@ impl Term {
         match s.get(self.var()) {
             Unassigned => Unassigned,
             val => match *self { Lit (_) => val, Not (_) => !val }
-        } 
+        }
     }
 }
 
@@ -395,7 +406,7 @@ pub struct Expression {
 }
 
 /**
- * An iterator type for iterating over clauses in an expression. Turns the 
+ * An iterator type for iterating over clauses in an expression. Turns the
  * internal representation of clauses into slices for external consumption.
  */
 struct ClauseIterator<'a> {
@@ -418,7 +429,7 @@ impl<'a> Iterator for ClauseIterator<'a> {
 static empty_vector : & 'static [usize] = &[];
 
 impl Expression {
-    pub fn new() -> Expression { 
+    pub fn new() -> Expression {
         Expression { clauses: Vec::new(), index: VecMap::new() }
     }
 
@@ -492,14 +503,14 @@ impl Expression {
 impl PartialEq for Expression {
     fn eq(&self, other: &Expression) -> bool {
         self.clauses == other.clauses
-    }    
+    }
 }
 
 impl fmt::Show for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
         try!(write!(f, "["));
-        
+
         for c in self.clauses() {
             if !first { try!(write!(f, " & " )); } else { first = false; }
             try!(c.fmt(f));

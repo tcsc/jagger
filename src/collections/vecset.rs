@@ -11,12 +11,12 @@ use std::slice;
 use test::Bencher;
 
 /**
- * A set implemented using a sorted vector. Due to memory locality and 
- * caching, this set implementation will generally be faster than the 
- * HashSet for moderately-sized sets with smallish keys. 
+ * A set implemented using a sorted vector. Due to memory locality and
+ * caching, this set implementation will generally be faster than the
+ * HashSet for moderately-sized sets with smallish keys.
  *
- * Benchmarks show that it outperforms the HashSet up to around 
- * 10,000 items; but your mileage may vary depending on the size of 
+ * Benchmarks show that it outperforms the HashSet up to around
+ * 10,000 items; but your mileage may vary depending on the size of
  * your cache and the sixe of the elements you store.
  */
 #[derive(Clone, PartialEq, Eq)]
@@ -41,10 +41,10 @@ impl<T: Ord> VecSet<T> {
     }
 
     /**
-     * Inserts an element into the set. Returns true if the element was added, 
+     * Inserts an element into the set. Returns true if the element was added,
      * or false if it already existed in the set.
      */
-    pub fn insert(&mut self, v: T) -> bool {
+    pub fn insert(&mut self, v: T) -> bool {;
         if self.items.is_empty() || (v > self.items[self.items.len()-1]) {
             self.items.push(v);
             true
@@ -53,7 +53,7 @@ impl<T: Ord> VecSet<T> {
             let index = lower_bound(self.items.as_slice(), &v);
             if self.items[index] == v {
                 false
-            } 
+            }
             else {
                 self.items.insert(index, v);
                 true
@@ -81,15 +81,15 @@ impl<T: Ord> VecSet<T> {
 
         let index = lower_bound(self.items.as_slice(), v);
         if (index < self.items.len()) && (self.items[index] == *v) {
-            true 
+            true
         }
         else {
             false
-        }    
+        }
     }
 
     /**
-     * 
+     *
      */
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -211,14 +211,14 @@ fn insert_1000_32_vecset(b: &mut Bencher) {
         let mut v : VecSet<(u64, u64)> = VecSet::new();
         for i in range(0, 10) {
             for x in RandomTestData.iter() {
-                let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+                let val : u64 = (*x as u64) * 100 * (i+1) as u64;
                 v.insert((val, val));
             }
         }
     })
 }
 
-//Comparison benchmark using HashSet 
+//Comparison benchmark using HashSet
 // #[bench]
 // fn insert_1000_32_hashset(b: &mut Bencher) {
 //     use std::collections::HashSet;
@@ -227,7 +227,7 @@ fn insert_1000_32_vecset(b: &mut Bencher) {
 //         let mut v : HashSet<(u64, u64)> = HashSet::new();
 //         for i in range(0, 10) {
 //             for x in RandomTestData.iter() {
-//                 let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+//                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //                 v.insert((val, val));
 //             }
 //         }
@@ -239,7 +239,7 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
     let mut s : VecSet<(u64, u64)> = VecSet::new();
     for i in range(0, 50) {
         for x in RandomTestData.iter() {
-            let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+            let val : u64 = (*x as u64) * 100 * (i+1) as u64;
             s.insert((val, val));
         }
     }
@@ -248,7 +248,7 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
         let mut v = s.clone();
         for i in range(0, 50) {
             for x in RandomTestData.iter() {
-                let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+                let val : u64 = (*x as u64) * 100 * (i+1) as u64;
                 v.remove(&(val, val));
             }
         }
@@ -262,7 +262,7 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
 //     let mut s : HashSet<(u64, u64)> = HashSet::new();
 //     for i in range(0, 50) {
 //         for x in RandomTestData.iter() {
-//             let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+//             let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //             s.insert((val, val));
 //         }
 //     }
@@ -271,7 +271,7 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
 //         let mut v = s.clone();
 //         for i in range(0, 50) {
 //             for x in RandomTestData.iter() {
-//                 let val : u64 = (*x as u64) * 100 * (i+1) as u64; 
+//                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //                 v.remove(&(val, val));
 //             }
 //         }
@@ -292,7 +292,7 @@ impl<T: Ord> Default for VecSet<T> {
 fn default_vecset_is_empty() {
     let s : VecSet<usize> = Default::default();
     assert!(s.is_empty());
-    assert!(s.len() == 0);  
+    assert!(s.len() == 0);
 }
 
 // ----------------------------------------------------------------------------
@@ -336,14 +336,195 @@ fn extending_does_not_insert_duplicates_elements() {
 
 
 // ----------------------------------------------------------------------------
+// A map stored in a vector
+// ----------------------------------------------------------------------------
+
+/**
+ * A map stored in a vector. Faster than a HashMap for small map sizes and
+ * small values.
+ */
+pub struct VecMap<K, V> {
+    keys: Vec<K>,
+    values: Vec<V>
+}
+
+impl<K: Ord, V: Clone> VecMap<K, V> {
+    pub fn new() -> VecMap<K, V> {
+        VecMap { keys: Vec::new(), values: Vec::new() }
+    }
+
+    pub fn with_capacity(n: usize) -> VecMap<K, V> {
+        VecMap {
+            keys: Vec::with_capacity(n),
+            values: Vec::with_capacity(n)
+        }
+    }
+
+    /**
+     * Inserts a key-value pair into the map. If the key already had a value
+     * present in the map, that value is returned. Returns None otherwise.
+     */
+    pub fn insert(&mut self, k: K, v: V) -> Option<V> {
+        let n = self.keys.len();
+        let mut rval = None;
+
+        if self.keys.is_empty() || (self.keys[n-1] < k) {
+            self.keys.push(k);
+            self.values.push(v);
+        }
+        else {
+            let index = lower_bound(self.keys.as_slice(), &k);
+            if self.keys[index] == k {
+                rval = Some(self.values[index].clone());
+                self.values[index] = v;
+            }
+            else {
+                self.keys.insert(index, k);
+                self.values.insert(index, v);
+            }
+        }
+        rval
+    }
+
+    pub fn remove(&mut self, k: &K) -> Option<V> {
+        let n = self.keys.len();
+        let mut rval = None;
+        if !self.keys.is_empty() && *k <= self.keys[n-1] {
+            let index = lower_bound(self.keys.as_slice(), &k);
+            if self.keys[index] == *k {
+                rval = Some(self.values[index].clone());
+                self.keys.remove(index);
+                self.values.remove(index);
+            }
+        }
+        rval
+    }
+
+    pub fn get(&self, k: &K) -> Option<&V> {
+        let n = self.keys.len();
+        let mut rval = None;
+        if !self.keys.is_empty() && *k <= self.keys[n-1] {
+            let index = lower_bound(self.keys.as_slice(), &k);
+            if self.keys[index] == *k {
+                rval = Some(&self.values[index])
+            }
+        }
+        rval
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+}
+
+#[test]
+fn new_vecmap_is_empty() {
+    let m : VecMap<usize,String> = VecMap::new();
+    assert!(m.is_empty());
+    assert_eq!(0, m.len());
+}
+
+#[test]
+fn inserting_elements_affects_vecmap_size() {
+    let mut m : VecMap<usize,String> = VecMap::new();
+    for x in range(0, 100) {
+        m.insert(x, format!("{:?}", x));
+        assert_eq!(x+1, m.len());
+    }
+}
+
+#[test]
+fn inserting_items_are_findable() {
+    let mut m : VecMap<usize,String> = VecMap::new();
+    for x in range(0, 100) {
+        m.insert(x, format!("{:?}", x));
+    }
+    for x in range(0, 100) {
+        let text = format!("{:?}", x);
+        match m.get(&x) {
+            Some(s) => assert!(*s == text),
+            _ => panic!("Expected Some(x), got None")
+        }
+    }
+}
+
+#[test]
+fn inserting_duplicates_does_not_affect_vecmap_size() {
+    let mut m : VecMap<usize,String> = VecMap::new();
+    m.insert(42, "first".to_string());
+    m.insert(42, "second".to_string());
+    assert_eq!(1, m.len());
+}
+
+#[test]
+fn removing_items_from_empty_map_returns_none() {
+    let mut m : VecMap<usize, String> = VecMap::new();
+    assert!(m.remove(&42) == None);
+}
+
+#[test]
+fn removing_item_from_vecmap_returns_item() {
+    let mut m : VecMap<usize,String> = VecMap::new();
+    m.insert(42, "the answer".to_string());
+    assert!(m.remove(&42) == Some("the answer".to_string()));
+    assert_eq!(0, m.len());
+}
+
+#[test]
+fn removing_non_existant_item_form_map_returns_none() {
+    let mut m : VecMap<usize,String> = VecMap::new();
+    m.insert(42, "the answer".to_string());
+    assert!(m.remove(&7) == None);
+}
+
+// ----------------------------------------------------------------------------
+// VecMap Default Trait
+// ----------------------------------------------------------------------------
+
+impl<K: Ord, V: Clone> Default for VecMap<K, V> {
+    #[inline]
+    fn default() -> VecMap<K,V> { VecMap::new() }
+}
+
+#[test]
+fn default_vecmap_is_empty() {
+    let s : VecSet<usize> = Default::default();
+    assert!(s.is_empty());
+    assert!(s.len() == 0);
+}
+
+// ----------------------------------------------------------------------------
+// VecMap Extend trait
+// ----------------------------------------------------------------------------
+
+impl<K: Ord, V: Clone> Extend<(K, V)> for VecMap<K, V> {
+    fn extend<I: Iterator<Item=(K, V)>>(&mut self, mut iter: I) {
+        for (k, v) in iter {
+            self.insert(k, v);
+        }
+    }
+}
+
+#[test]
+fn extending_vecmap_inserts_elements() {
+    let mut s = VecSet::<usize>::new();
+    s.extend(range(0,100));
+    assert_eq!(100, s.len());
+}
+
+// ----------------------------------------------------------------------------
 // Helper functions
 // ----------------------------------------------------------------------------
 
 /**
  * Analogue of the C++ std::lower_bound algorithm.
  *
- * Searches a slice for the smallest item not less than the supplied value. The 
- * slice is assumed to be non-empty and sorted. Uses a binary search to make 
+ * Searches a slice for the smallest item not less than the supplied value. The
+ * slice is assumed to be non-empty and sorted. Uses a binary search to make
  * things a bit faster.
  *
  * Behaviour is undefied for an unsorted slice.
@@ -360,7 +541,7 @@ fn lower_bound<T:Ord>(items: &[T], val: &T) -> usize {
             Ordering::Greater => (),
             Ordering::Less => {
                 base = index + 1;
-                limit -= 1; 
+                limit -= 1;
             }
         }
         limit = limit >> 1;

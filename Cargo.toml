@@ -1,0 +1,7 @@
+[package]
+name = "jagger"
+version = "0.0.1"
+authors = ["Trent Clarke <trent.clarke@gmail.com>"]
+
+[[bin]]
+name = "jagger"

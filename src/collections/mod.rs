@@ -1,2 +1,2 @@
-pub use collections::vecset::VecSet;
+pub use collections::vecset::{VecSet, VecMap};
 pub mod vecset;
