@@ -1,4 +1,4 @@
-jagger
+jagger [![Build Status](https://travis-ci.org/tcsc/jagger.svg?branch=master)](https://travis-ci.org/tcsc/jagger)
 ======
 
 An experiment in package management using a SAT solver, written in Rust.
