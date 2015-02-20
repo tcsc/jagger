@@ -1,12 +1,9 @@
-use std::collections;
-use std::collections::{HashMap, BTreeMap, RingBuf};
+use std::collections::{HashMap, RingBuf};
 use std::iter::FromIterator;
 use std::borrow::Cow;
-use log;
 
 use graphviz as dot;
 
-use solver::types;
 use solver::types::{Solution, Expression, Var, VarSet, Clause};
 use solver::types::Term::{self, Lit, Not};
 use solver::types::SolutionValue::{self, True, False, Unassigned};
@@ -139,20 +136,20 @@ impl ImplicationGraph {
      */
     pub fn strip(&mut self, var: Var, val: SolutionValue) -> Vec<Var> {
         let mut queue = vec!(Assignment(var, val));
-        let mut result = Vec::new();
+        let mut result = VecSet::new();
 
         // while we still have assignments to check...
         while !queue.is_empty() {
             let a = queue.pop().unwrap();
             let Assignment(var, _) = a;
-            result.push(var);
+            result.insert(var);
 
             match self.map.remove(&a) {
                 None => {},
                 Some(implication) => {
                     // add the consequences of this assignment to the queue of
                     // nodes to remove
-                    queue.push_all(implication.consequences.as_slice());
+                    queue.extend(implication.consequences.iter().map(|&x|x));
 
                     // remove this assignment from our roots' consequences
                     for r in implication.roots.iter() {
@@ -166,11 +163,16 @@ impl ImplicationGraph {
                 }
             }
         }
-        result
+        result.vec().clone()
     }
 
-    pub fn learn_conflict_clause(&self, conflict: Var, decision: Asmt) -> Clause {
+    pub fn learn_conflict_clause(&self,
+                                 decision_var: Var,
+                                 decision_val: SolutionValue,
+                                 conflict: Var) -> Clause
+    {
         dump_graph("learn_conflict.dot", self);
+        let decision = (decision_var, decision_val);
         learn_conflict_clause(&self.map, conflict, mk_assignment(&decision))
     }
 
@@ -199,7 +201,7 @@ fn mk_assignment(asmt: &Asmt) -> Assignment {
     Assignment(asmt.0, asmt.1)
 }
 
-#[config(test)]
+#[cfg(test)]
 fn test_graph() -> ImplicationGraph {
     // graph from
     // http://www.cs.princeton.edu/courses/archive/fall13/cos402/readings/SAT_learning_clauses.pdf
@@ -265,7 +267,7 @@ fn inserting_nodes_updates_consequences_and_roots() {
 fn removing_nodes_updates_consequences_of_roots() {
     let mut g = test_graph();
     let key = Assignment(3, True);
-    let i = g.strip(4, True);
+    let vars = g.strip(4, True);
 
     // pre-strip 4+
     //            8
@@ -297,9 +299,10 @@ fn removing_nodes_updates_consequences_of_roots() {
         (4, (3, True),  &[(1, False), (7, False)])
     ]);
 
-    dump_graph("remove_expected.dot", &expected);
-    dump_graph("remove_actual.dot", &g);
+    assert_eq!(vars, [4, 5, 6]);
 
+    //dump_graph("remove_expected.dot", &expected);
+    //dump_graph("remove_actual.dot", &g);
 
     assert!(g == expected);
 }
@@ -536,7 +539,7 @@ fn find_paths(g: &GraphImpl, src: Assignment, dst: Assignment) -> Vec<Assignment
     return result
 }
 
-#[config(test)]
+#[cfg(test)]
 fn mk_assignments(asmts: &[Asmt]) -> Assignments {
     asmts.iter()
          .map(|&(var, val)| Assignment(var, val))

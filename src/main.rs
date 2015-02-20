@@ -1,6 +1,8 @@
 #![feature(box_syntax)]
 #![allow(unstable)]
+#![allow(dead_code)]
 #[macro_use] extern crate log;
+
 extern crate graphviz;
 extern crate test;
 
@@ -13,5 +15,5 @@ mod formulator;
 
 #[cfg(not(test))]
 fn main() {
-
+//	env_logger::init().unwrap();
 }

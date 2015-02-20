@@ -222,7 +222,7 @@ fn empty_system_is_an_error() {
 // Version
 // ------------------------------------------------------------------------
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct VersionChunk {
     prefix: String,
     number: isize
@@ -239,14 +239,14 @@ impl VersionChunk {
 /// the software being packaged) and the "package revision" which is the
 /// version of the enclosing package.
 
-#[derive(Eq, Show, Clone)]
+#[derive(Eq, Debug, Clone)]
 pub struct Version {
     epoch: isize,
     chunks: Vec<VersionChunk>,
     revision: String
 }
 
-#[derive(PartialEq, Eq, Show, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum VersionError {
     InvalidVersion (String),
     InvalidEpoch (String),

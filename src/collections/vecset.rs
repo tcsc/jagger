@@ -98,6 +98,10 @@ impl<T: Ord> VecSet<T> {
     pub fn iter(&self) -> slice::Iter<T> {
         self.items.iter()
     }
+
+    pub fn vec<'a>(&'a self) -> &'a Vec<T> {
+        &self.items
+    }
 }
 
 #[test]
@@ -181,7 +185,7 @@ fn removing_non_existant_items_returns_false(){
 }
 
 
-#[config(test)]
+#[cfg(test)]
 static RandomTestData : &'static [usize] = &[
     57,  84,  22,  88,  21,
     71,  71,  10,  3,   56,
@@ -312,7 +316,7 @@ impl<T: Ord> FromIterator<T> for VecSet<T> {
 // ----------------------------------------------------------------------------
 
 impl<T: Ord> Extend<T> for VecSet<T> {
-    fn extend<I: Iterator<Item=T>>(&mut self, mut iter: I) {
+    fn extend<I: Iterator<Item=T>>(&mut self, iter: I) {
         for v in iter {
             self.insert(v);
         }
@@ -502,7 +506,7 @@ fn default_vecmap_is_empty() {
 // ----------------------------------------------------------------------------
 
 impl<K: Ord, V: Clone> Extend<(K, V)> for VecMap<K, V> {
-    fn extend<I: Iterator<Item=(K, V)>>(&mut self, mut iter: I) {
+    fn extend<I: Iterator<Item=(K, V)>>(&mut self, iter: I) {
         for (k, v) in iter {
             self.insert(k, v);
         }

@@ -15,7 +15,7 @@ enum FormulatorError {
     NoVariableFor (String, Ordinal)
 }
 
-impl fmt::Show for FormulatorError {
+impl fmt::Debug for FormulatorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             FormulatorError::NoVariableFor (ref name, ordinal) => {
@@ -72,7 +72,7 @@ impl<'a> Solver<'a> {
     }
 
     /**
-     * Looks up the variable that represents a given package in the solver. 
+     * Looks up the variable that represents a given package in the solver.
      * Returns None if no such variable exists.
      */
     fn find_pkg_var(&'a self, pkg: &'a Package) -> Option<Var> {
@@ -86,23 +86,23 @@ impl<'a> Solver<'a> {
         match self.find_pkg_var(pkg) {
             None => no_var_for(pkg),
             Some(n) => Ok(n)
-        }  
+        }
     }
 }
 
-impl<'a> fmt::Show for Solver<'a> {
+impl<'a> fmt::Debug for Solver<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (key, value) in self.pkgvars.iter() {
             try!(writeln!(f, "{:?}: {:p}: {}", key, *key, value));
         }
         writeln!(f, "")
-    }    
+    }
 }
 
 /**
- * Constructs a set of Clauses that say only one package with the supplied 
- * name may be installed. For example, should you have a repo with packages 
- * A1, A2 & A3, then this function should return the set of 
+ * Constructs a set of Clauses that say only one package with the supplied
+ * name may be installed. For example, should you have a repo with packages
+ * A1, A2 & A3, then this function should return the set of
  *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
  */
 fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Clause>> {
@@ -112,11 +112,11 @@ fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<C
 
     for a in pkgs.iter() {
         for b in pkgs.iter() {
-            if *a == *b { 
+            if *a == *b {
                 continue;
             }
 
-            if visited.contains(b) { 
+            if visited.contains(b) {
                 continue;
             }
 
@@ -141,7 +141,7 @@ fn unique_package_install_clauses_are_created_correctly() {
     for a in pkgs.iter() {
         for b in pkgs.iter() {
             if a != b {
-                // assert that we can find a clause that says (~a | ~b) or 
+                // assert that we can find a clause that says (~a | ~b) or
                 // (~b | ~a)
                 assert!( actual.iter().find(|r| {
                     let fwd = s.make_conflict_clause(*a, *b).unwrap();
@@ -167,7 +167,7 @@ fn make_conflicts_clauses(s: &Solver, pkg: &Package, exp: &PkgExp) -> Formulator
 
     for conflict in s.pkgdb.select_exp(exp).iter() {
         let conflict_var = try!(s.pkg_var(*conflict));
-        result.push( Clause::from(&[Term::Not(pkgvar), Term::Not(conflict_var)]) ) 
+        result.push( Clause::from(&[Term::Not(pkgvar), Term::Not(conflict_var)]) )
     }
     Ok(result)
 }
@@ -187,7 +187,7 @@ fn package_conflict_clauses_are_generated_correctly() {
 
     let s = Solver::new(db);
     let pkgvar = s.pkg_var(pkg).unwrap();
-    let expected : Vec<Clause> 
+    let expected : Vec<Clause>
         = db.select("alpha", lte(2))
             .iter()
             .map(|p| Clause::from( &[Not(pkgvar), Not(s.pkg_var(*p).unwrap())] )  )
@@ -204,7 +204,7 @@ fn package_conflict_clauses_are_generated_correctly() {
 }
 
 /**
- * Generates Clauses that specify that a version of the installed packages must 
+ * Generates Clauses that specify that a version of the installed packages must
  * stay installed. Installed packages can be upgraded but not uninstalled.
  */
 fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<Clause>> {
@@ -222,7 +222,7 @@ fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<Cl
 
 #[test]
 fn installed_packages_must_be_installed_or_upgraded() {
-    // asserts that the Clauses stating that a package's dependencies  
+    // asserts that the Clauses stating that a package's dependencies
 
     let db = &mk_test_db();
     let s = Solver::new(db);
@@ -248,12 +248,12 @@ fn installed_packages_must_be_installed_or_upgraded() {
 
             assert!(clauses.iter()
                            .find(|x| find_clause(*x, &r1))
-                           .is_some(), 
+                           .is_some(),
                     "Couldn't find Clause {0:?}", r1);
 
             assert!(clauses.iter()
                            .find(|x| find_clause(*x, &r2))
-                           .is_some(), 
+                           .is_some(),
                     "Couldn't find Clause {0:?}", r2);
 
         },
@@ -267,7 +267,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
  * Automatically deselects all packages older than any installed packages.
  */
 fn deny_installed_package_downgrades(s: &Solver,sln: &Solution) -> FormulatorResult<Solution> {
-    let mut result = sln.clone(); 
+    let mut result = sln.clone();
     for pkg in s.pkgdb.installed_packages().iter() {
         let invalid_pkgs = s.pkgdb.select(pkg.name(), lt(pkg.ordinal()));
         for invalid_pkg in invalid_pkgs.iter() {
@@ -280,7 +280,7 @@ fn deny_installed_package_downgrades(s: &Solver,sln: &Solution) -> FormulatorRes
 
 #[test]
 fn installed_package_downgrades_are_disabled() {
-    // asserts that the variables that indicate an installed package downgrade 
+    // asserts that the variables that indicate an installed package downgrade
     // have been set to false by the appropriate function.
     let db = &mk_test_db();
     let solver = Solver::new(db);
@@ -308,16 +308,16 @@ fn installed_package_downgrades_are_disabled() {
 }
 
 /**
- * Generates a Clause requiring that at least one of the packages specified 
- * by the package expression must be installed for the root package is 
- * installed. For example, given package A depends on package B, 
+ * Generates a Clause requiring that at least one of the packages specified
+ * by the package expression must be installed for the root package is
+ * installed. For example, given package A depends on package B,
  * versions 2-4, this method will generate a Clause like
  *
  *    (~A | B2 | B3 | B4)
  *
- * This Clause basically states that either A is not installed, or package A 
- * AND any of B2, B3, B4 are installed. We rely on the clauses generated by 
- * the unique install Clause to make sure *only one* of them is installed in 
+ * This Clause basically states that either A is not installed, or package A
+ * AND any of B2, B3, B4 are installed. We rely on the clauses generated by
+ * the unique install Clause to make sure *only one* of them is installed in
  * the end.
  */
 fn make_requires_clause(s: &Solver, pkg: &Package, exp: &PkgExp) -> FormulatorResult<Clause> {
@@ -333,7 +333,7 @@ fn make_requires_clause(s: &Solver, pkg: &Package, exp: &PkgExp) -> FormulatorRe
 
 #[test]
 fn package_requirement_clauses_are_created_correctly() {
-    // asserts that the clauses stating that a package's dependencies  
+    // asserts that the clauses stating that a package's dependencies
     let db = &mk_test_db();
 
     // find the package that we want to test
@@ -368,8 +368,8 @@ fn package_requirement_clauses_are_created_correctly() {
 }
 
 #[cfg(test)]
-fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where 
-    F: FnMut(usize) -> Package 
+fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where
+    F: FnMut(usize) -> Package
 {
     FromIterator::from_iter(range(0, n).map(f))
 }
@@ -387,17 +387,17 @@ fn mk_test_db() -> PkgDb {
     // a0      a1*     a2      a3      a4
 
     let mut db = PkgDb::new();
-    db.add_packages(pkg_vec(5, |n| { 
+    db.add_packages(pkg_vec(5, |n| {
         let state = if n == 1 { State::Installed } else { State::Available };
         Package::new("alpha", n, state)
     }).as_slice());
-    
+
     db.add_packages(pkg_vec(10, |n| {
         let state = if n == 4 { State::Installed } else { State::Available };
         Package::new("beta", n, state)
     }).as_slice());
-    
-    db.add_packages(pkg_vec(10, |n| { 
+
+    db.add_packages(pkg_vec(10, |n| {
         let mut p = Package::new("gamma", n, State::Available);
         p.add_requirement("beta", gte(n));
         p.add_conflict("alpha", lte(n / 2));

@@ -21,7 +21,7 @@ p cnf 12 8
 7 8 -10 0
 7 10 -12");
     b.iter(|| ::solver::solve(
-    	&p.expression, 
-    	p.varcount, 
+    	&p.expression,
+    	p.varcount,
     	Solution::new(p.varcount)).unwrap())
 }

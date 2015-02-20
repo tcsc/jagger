@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet, BTreeSet};
-use std::collections::hash_map::{Keys, Values, Iter};
+use std::collections::HashMap;
+use std::collections::hash_map::{Keys, Iter};
 use std::iter::{FromIterator, range_step};
 use std::ops::{Index, IndexMut};
 use std::fmt;
@@ -153,7 +153,7 @@ impl fmt::Debug for DecisionStack {
 //
 // ----------------------------------------------------------------------------
 
-#[config(test)]
+#[cfg(test)]
 fn mk_graph_test_exp() -> Expression {
     Expression::from(&[
         &[Lit(1), Lit(4)],
@@ -166,7 +166,6 @@ fn mk_graph_test_exp() -> Expression {
         &[Lit(7), Lit(10), Not(12)]
     ])
 }
-
 
 // ----------------------------------------------------------------------------
 //
@@ -352,7 +351,7 @@ pub fn solve(exp: &Expression,
     let mut e = exp.clone();
 
     while state.has_unassigned_vars() {
-        let (var, val) = match next_move {
+        let (decision_var, decision_val) = match next_move {
             SolverMove::Continue => (pick_var(&mut state.unassigned_vars), False),
             SolverMove::Backtrack => {
                 println!("Attempting to backtrack...");
@@ -372,18 +371,21 @@ pub fn solve(exp: &Expression,
         };
 
         println!("Stack depth: {:?}", state.stack.len());
-        state.push(var, val);
-        state.unassigned_vars.remove(&var);
+        state.push(decision_var, decision_val);
+        state.unassigned_vars.remove(&decision_var);
 
-        match propagate(state.depth(), var, val, &mut state, &e) {
+        match propagate(state.depth(), decision_var, decision_val, &mut state, &e) {
             PropagationResult::Success => {
                 next_move = SolverMove::Continue;
             },
 
             PropagationResult::Contradiction (conflict) => {
-                // let new_rule = state.learn_clause(var, val, conflict);
-                // exp.add(&new_rule);
-                panic!("Need to re-implement rollback");
+                let new_rule = state.implications.learn_conflict_clause(
+                                    decision_var,
+                                    decision_val,
+                                    conflict);
+                //e.add(&new_rule);
+                //rollback(state, new_rule);
             },
 
             PropagationResult::EvaluatesToFalse => {

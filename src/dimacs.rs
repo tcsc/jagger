@@ -2,7 +2,6 @@ use std::old_io;
 use std::num::{self, SignedInt};
 use std::str::FromStr;
 use solver::{Expression, Term};
-use solver::SolutionValue::{True, False, Unassigned};
 use solver::Term::{Lit, Not};
 
 // ----------------------------------------------------------------------------
@@ -16,8 +15,8 @@ pub struct Problem {
 
 impl Problem {
     pub fn new(varcount: usize, clauses: &[&[Term]]) -> Problem {
-        Problem { 
-            varcount: varcount, 
+        Problem {
+            varcount: varcount,
             expression: Expression::from(clauses)
         }
     }
@@ -27,14 +26,14 @@ impl Problem {
 //
 // ----------------------------------------------------------------------------
 
-#[derive(Show, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum DimacsError {
     IoFailure (old_io::IoError),
     ParseFailure (String)
 }
 
-fn parse_failure<T>(s: String) -> Result<T, DimacsError> { 
-    Err(DimacsError::ParseFailure(s)) 
+fn parse_failure<T>(s: String) -> Result<T, DimacsError> {
+    Err(DimacsError::ParseFailure(s))
 }
 
 fn io_failure<T>(err: old_io::IoError) -> Result<T, DimacsError> {
@@ -42,7 +41,7 @@ fn io_failure<T>(err: old_io::IoError) -> Result<T, DimacsError> {
 }
 
 /**
- * Reads a signed integer from the supplied string. 
+ * Reads a signed integer from the supplied string.
  */
 fn read_int(s: &str) -> Result<isize, DimacsError> {
     match FromStr::from_str(s) {
@@ -69,7 +68,7 @@ fn read_clause(s: &str) -> Result<Vec<Term>, DimacsError> {
 fn read_problem_header(s: &str) -> Result<(isize, isize), DimacsError> {
     let parts : Vec<&str> = s.split(' ').collect();
     match parts.len() {
-        4 => { 
+        4 => {
             if parts[1] != "cnf" {
                 return parse_failure(format!("expected \"cnf\", got \"{:?}\"", parts.get(1)))
             }
@@ -126,22 +125,22 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
                         let (v, _)= try!(read_problem_header(line));
                         nvars = v;
                     }
-                    Some(_) => { 
-                        clauses.push(try!(read_clause(line))); 
+                    Some(_) => {
+                        clauses.push(try!(read_clause(line)));
                     }
                 }
             },
             Err(err) => return io_failure(err)
         }
-    } 
+    }
 
     let slices : Vec<&[Term]> = clauses.iter()
-                                       .map(|v| v.as_slice())
-                                       .collect(); 
-    Ok(Problem::new(nvars as usize, slices.as_slice()))
+                                       .map(|v| &v[])
+                                       .collect();
+    Ok(Problem::new(nvars as usize, &slices[]))
 }
 
-#[config(test)]
+#[cfg(test)]
 fn make_buffer(lines: &[&str]) -> old_io::MemReader {
     let mut text = old_io::MemWriter::new();
     for s in lines.iter() {

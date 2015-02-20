@@ -1,6 +1,6 @@
 use std::old_io;
 
-#[config(test)]
+#[cfg(test)]
 pub fn load_problem(s: &str) -> ::dimacs::Problem {
     let mut text = old_io::MemWriter::new();
     match text.write_str(s) {

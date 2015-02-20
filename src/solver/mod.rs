@@ -5,4 +5,6 @@ pub mod types;
 mod implication_graph;
 mod watchlist;
 pub mod solver;
+
+#[cfg(test)]
 mod benchmarks;

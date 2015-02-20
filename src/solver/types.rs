@@ -4,7 +4,7 @@ use std::cmp;
 use std::slice;
 use std::iter::{FromIterator, repeat};
 use std::collections;
-use std::collections::{BTreeSet, HashMap, VecMap};
+use std::collections::{BTreeSet, VecMap};
 
 use self::SolutionValue::{True, False, Unassigned, Conflict};
 use self::Term::{Lit, Not};
@@ -51,13 +51,13 @@ impl VarSet {
 }
 
 impl FromIterator<Var> for VarSet {
-    fn from_iter<I: Iterator<Item=Var>>(mut iter: I) -> VarSet {
+    fn from_iter<I: Iterator<Item=Var>>(iter: I) -> VarSet {
         VarSet(FromIterator::from_iter(iter))
     }
 }
 
 impl Extend<Var> for VarSet {
-    fn extend<I: Iterator<Item=Var>>(&mut self, mut iter: I) {
+    fn extend<I: Iterator<Item=Var>>(&mut self, iter: I) {
         let VarSet(ref mut this) = *self;
         this.extend(iter)
     }
@@ -212,7 +212,7 @@ impl<'a> Solution {
     /**
      * Resets all variables in the supplied iterator to Unassigned.
      */
-    pub fn unset_all<I: Iterator<Item=Var>>(&mut self, mut iter: I) {
+    pub fn unset_all<I: Iterator<Item=Var>>(&mut self, iter: I) {
         for var in iter {
             self.set(var, Unassigned)
         }
@@ -238,7 +238,7 @@ impl<'a> Solution {
     }
 }
 
-impl fmt::Show for Solution {
+impl fmt::Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
 
@@ -315,7 +315,7 @@ impl Ord for Term {
     }
 }
 
-impl fmt::Show for Term {
+impl fmt::Debug for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Lit(x) => write!(f, "{}", x),
@@ -363,7 +363,7 @@ impl Clause {
 }
 
 impl FromIterator<Term> for Clause {
-    fn from_iter<I: Iterator<Item=Term>>(mut terms: I) -> Clause {
+    fn from_iter<I: Iterator<Item=Term>>(terms: I) -> Clause {
         let mut r = Clause::new();
         for t in terms {
             r.add(t.clone())
@@ -372,7 +372,7 @@ impl FromIterator<Term> for Clause {
     }
 }
 
-impl fmt::Show for Clause {
+impl fmt::Debug for Clause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
         try!(write!(f, "("));
@@ -426,7 +426,7 @@ impl<'a> Iterator for ClauseIterator<'a> {
     }
 }
 
-static empty_vector : & 'static [usize] = &[];
+static EMPTY_VECTOR : & 'static [usize] = &[];
 
 impl Expression {
     pub fn new() -> Expression {
@@ -455,7 +455,7 @@ impl Expression {
                 ClauseIterator { exp: self, items: clauses.iter() }
             },
             None => {
-                ClauseIterator { exp: self, items: empty_vector.iter() }
+                ClauseIterator { exp: self, items: EMPTY_VECTOR.iter() }
             }
         }
     }
@@ -506,7 +506,7 @@ impl PartialEq for Expression {
     }
 }
 
-impl fmt::Show for Expression {
+impl fmt::Debug for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first = true;
         try!(write!(f, "["));
