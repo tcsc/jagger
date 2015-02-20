@@ -141,7 +141,7 @@ fn parse_arch(a: &str) -> ArchResult<Architecture> {
     }
     else {
         let part_strings : Vec<&str> = a.split('-').collect();
-        let parts = part_strings.as_slice();
+        let parts = &part_strings[];
         match parts.len() {
             1 => parse_alias(parts[0]),
             n @ 2 ... 3 => {
@@ -465,7 +465,7 @@ impl PartialOrd for Version {
                 // compare the chunks left-to-right, as far as we can
                 let mut chunks = self.chunks.iter().zip(other.chunks.iter());
                 for (ref s, ref o) in chunks {
-                    match debian_cmp(s.prefix.as_slice(), o.prefix.as_slice()) {
+                    match debian_cmp(&s.prefix[], &o.prefix[]) {
                         Equal => {
                             match s.number.cmp(&o.number) {
                                 Equal => {},
@@ -487,7 +487,7 @@ impl PartialOrd for Version {
                     _ => {
                         // If both chunk strings are the same length, then
                         // compare the package revision and return that
-                        let rval = debian_cmp(self.revision.as_slice(), other.revision.as_slice());
+                        let rval = debian_cmp(&self.revision[], &other.revision[]);
                         return Some(rval);
                     }
                 }

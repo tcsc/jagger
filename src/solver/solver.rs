@@ -632,7 +632,7 @@ fn propagate(level: usize,
                     println!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
                     let roots = extract_var_roots(var, clause, &state.solution);
 
-                    state.implications.insert(level, var, deduced_value, roots.as_slice());
+                    state.implications.insert(level, var, deduced_value, &roots[]);
                     state.unassigned_vars.remove(&var);
 
                     // Do we have any previouly-deduced values for the thing we

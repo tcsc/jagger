@@ -50,7 +50,7 @@ impl<T: Ord> VecSet<T> {
             true
         }
         else {
-            let index = lower_bound(self.items.as_slice(), &v);
+            let index = lower_bound(&self.items[], &v);
             if self.items[index] == v {
                 false
             }
@@ -67,7 +67,7 @@ impl<T: Ord> VecSet<T> {
      */
     pub fn remove(&mut self, v: &T) -> bool {
         if !self.items.is_empty() {
-            let index = lower_bound(self.items.as_slice(), v);
+            let index = lower_bound(&self.items[], v);
             if (index < self.items.len()) && (self.items[index] == *v) {
                 self.items.remove(index);
                 return true;
@@ -79,7 +79,7 @@ impl<T: Ord> VecSet<T> {
     pub fn contains(&self, v: &T) -> bool {
         if self.items.is_empty() { return false }
 
-        let index = lower_bound(self.items.as_slice(), v);
+        let index = lower_bound(&self.items[], v);
         if (index < self.items.len()) && (self.items[index] == *v) {
             true
         }
@@ -377,7 +377,7 @@ impl<K: Ord, V: Clone> VecMap<K, V> {
             self.values.push(v);
         }
         else {
-            let index = lower_bound(self.keys.as_slice(), &k);
+            let index = lower_bound(&self.keys[], &k);
             if self.keys[index] == k {
                 rval = Some(self.values[index].clone());
                 self.values[index] = v;
@@ -394,7 +394,7 @@ impl<K: Ord, V: Clone> VecMap<K, V> {
         let n = self.keys.len();
         let mut rval = None;
         if !self.keys.is_empty() && *k <= self.keys[n-1] {
-            let index = lower_bound(self.keys.as_slice(), &k);
+            let index = lower_bound(&self.keys[], &k);
             if self.keys[index] == *k {
                 rval = Some(self.values[index].clone());
                 self.keys.remove(index);
@@ -408,7 +408,7 @@ impl<K: Ord, V: Clone> VecMap<K, V> {
         let n = self.keys.len();
         let mut rval = None;
         if !self.keys.is_empty() && *k <= self.keys[n-1] {
-            let index = lower_bound(self.keys.as_slice(), &k);
+            let index = lower_bound(&self.keys[], &k);
             if self.keys[index] == *k {
                 rval = Some(&self.values[index])
             }
@@ -572,7 +572,7 @@ fn lower_bound_gives_sensible_bound_on_larger_than_largest_element() {
 fn lower_bound_finds_existing_elements() {
     let data : Vec<usize> = FromIterator::from_iter(range(0, 100));
     for x in range(0, 100) {
-        assert_eq!(x, lower_bound(data.as_slice(), &x));
+        assert_eq!(x, lower_bound(&data[], &x));
     }
 }
 
@@ -580,6 +580,6 @@ fn lower_bound_finds_existing_elements() {
 fn lower_bound_finds_appropriate_bound() {
     let data : Vec<usize> = FromIterator::from_iter(range_step(0, 100, 3));
     for x in range(0, 100) {
-        assert_eq!((2 + x)/3, lower_bound(data.as_slice(), &x));
+        assert_eq!((2 + x)/3, lower_bound(&data[], &x));
     }
 }

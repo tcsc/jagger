@@ -177,7 +177,7 @@ fn package_conflict_clauses_are_generated_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
-    let pkg = match db.select("gamma", eq(5)).as_slice() {
+    let pkg = match &db.select("gamma", eq(5))[] {
         [p] => p,
         _ => {
             assert!(false, "Expected exactly one package returned from select");
@@ -215,7 +215,7 @@ fn make_installed_package_upgrade_clauses(s: &Solver) -> FormulatorResult<Vec<Cl
         for p in valid_pkgs.iter() {
             terms.push(Term::Lit(try!(s.pkg_var(*p))))
         }
-        result.push( Clause::from(terms.as_slice()) );
+        result.push( Clause::from(&terms[]) );
     }
     Ok(result)
 }
@@ -328,7 +328,7 @@ fn make_requires_clause(s: &Solver, pkg: &Package, exp: &PkgExp) -> FormulatorRe
         let v = try!(s.pkg_var(*dep));
         result.push(Term::Lit(v))
     }
-    Ok( Clause::from(result.as_slice()) )
+    Ok( Clause::from(&result[]) )
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn package_requirement_clauses_are_created_correctly() {
     let db = &mk_test_db();
 
     // find the package that we want to test
-    let pkg = match db.select("gamma", eq(5)).as_slice() {
+    let pkg = match &db.select("gamma", eq(5))[] {
         [p] => p,
         _ => {
             assert!(false, "Expected exactly one package returned from select");
@@ -358,7 +358,7 @@ fn package_requirement_clauses_are_created_correctly() {
 
     match make_requires_clause(&s, pkg, &pkg.requires()[0]) {
         Ok (actual) => {
-            let e = Clause::from(expected.as_slice());
+            let e = Clause::from(&expected[]);
             assert!(actual == e, "Expected: {0:?}, got {1:?}", e, actual);
         },
         Err (reason) => {
@@ -387,22 +387,22 @@ fn mk_test_db() -> PkgDb {
     // a0      a1*     a2      a3      a4
 
     let mut db = PkgDb::new();
-    db.add_packages(pkg_vec(5, |n| {
+    db.add_packages(&pkg_vec(5, |n| {
         let state = if n == 1 { State::Installed } else { State::Available };
         Package::new("alpha", n, state)
-    }).as_slice());
+    })[]);
 
-    db.add_packages(pkg_vec(10, |n| {
+    db.add_packages(&pkg_vec(10, |n| {
         let state = if n == 4 { State::Installed } else { State::Available };
         Package::new("beta", n, state)
-    }).as_slice());
+    })[]);
 
-    db.add_packages(pkg_vec(10, |n| {
+    db.add_packages(&pkg_vec(10, |n| {
         let mut p = Package::new("gamma", n, State::Available);
         p.add_requirement("beta", gte(n));
         p.add_conflict("alpha", lte(n / 2));
         p
-    }).as_slice());
+    })[]);
 
 
     return db

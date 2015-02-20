@@ -354,7 +354,7 @@ impl Clause {
     }
 
     pub fn terms(&self) -> &[Term] {
-        self.terms.as_slice()
+        &self.terms[]
     }
 
     pub fn iter(&self) -> slice::Iter<Term> {
@@ -544,8 +544,8 @@ fn get_clauses_containing_var_returns_only_clauses_containing_var() {
 
     let clauses : Vec<&[Term]> = sln.clauses_containing(1).collect();
     assert!(clauses.len() == 2);
-    assert!(clauses.iter().find(|c| **c == [Lit(1), Lit(2), Lit(3)].as_slice()).is_some());
-    assert!(clauses.iter().find(|c| **c == [Lit(1)].as_slice()).is_some())
+    assert!(clauses.iter().find(|&c| c == &[Lit(1), Lit(2), Lit(3)]).is_some());
+    assert!(clauses.iter().find(|&c| c == &[Lit(1)]).is_some())
 }
 
 #[test]

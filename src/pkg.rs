@@ -246,7 +246,7 @@ impl Package {
      *
      */
     pub fn requires<'a>(&'a self) -> &'a [PkgExp] {
-        self.requires.as_slice()
+        &self.requires[]
     }
 
     pub fn add_conflict(&mut self, name: &str, ver: VersionExpression) {
@@ -254,7 +254,7 @@ impl Package {
     }
 
     pub fn conflicts<'a>(&'a self) -> &'a [PkgExp] {
-        self.conflicts.as_slice()
+        &self.conflicts[]
     }
 
     /**
@@ -265,7 +265,9 @@ impl Package {
         (self.name == exp.name) && exp.version.matches(self.ordinal)
     }
 
-    pub fn name<'a>(&'a self) -> &'a str { self.name.as_slice() }
+    pub fn name<'a>(&'a self) -> &'a str {
+        &self.name[]
+    }
 
     pub fn ordinal(&self) -> Ordinal { self.ordinal }
 }
@@ -274,8 +276,8 @@ impl PartialEq for Package {
     fn eq(&self, other: &Package) -> bool {
         if self.name != other.name { return false };
         if self.ordinal != other.ordinal { return false };
-        if self.requires.as_slice() != other.requires.as_slice() { return false };
-        if self.conflicts.as_slice() != other.conflicts.as_slice() { return false };
+        if &self.requires[] != &other.requires[] { return false };
+        if &self.conflicts[] != &other.conflicts[] { return false };
         true
     }
 }
@@ -396,26 +398,26 @@ fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where
 #[test]
 fn pkgdb_empty_select_returns_empty_vector() {
     let mut db = PkgDb::new();
-    db.add_packages(pkg_vec(5, |n| {
+    db.add_packages(&pkg_vec(5, |n| {
         Package::new("alpha", n, State::Available)
-    }).as_slice());
+    })[]);
     assert!(db.select("nonesuch", gt(10)).is_empty())
 }
 
 #[test]
 fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
-    db.add_packages(pkg_vec(5, |n| {
+    db.add_packages(&pkg_vec(5, |n| {
         Package::new("alpha", n, State::Available)
-    }).as_slice());
-    db.add_packages(pkg_vec(10, |n| {
+    })[]);
+    db.add_packages(&pkg_vec(10, |n| {
         Package::new("beta", n, State::Available)
-    }).as_slice());
+    })[]);
 
     let data = pkg_vec(4, |n| Package::new_available("beta", n + 6));
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
     let actual = db.select("beta", gte(6));
 
-    assert!(expected.as_slice() == actual.as_slice(),
+    assert!(&expected[] == &actual[],
             "expected: {:?}, got: {:?}", expected, actual);
 }

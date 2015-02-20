@@ -117,7 +117,7 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
     for line in buf.lines() {
         match line {
             Ok(s) => {
-                let line = s.as_slice().trim();
+                let line = s[].trim();
                 match line.chars().next() {
                     None => {  /* empty line */ },
                     Some(c) if c == 'c' => { /* comment */ },
