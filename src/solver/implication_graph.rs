@@ -6,7 +6,7 @@ use graphviz as dot;
 
 use solver::types::{Var, Clause};
 use solver::types::Term::{self, Lit, Not};
-use solver::types::SolutionValue::{self, True, False, Unassigned};
+use solver::types::SolutionValue::{self, True, False};
 use collections::VecSet;
 
 // ----------------------------------------------------------------------------
@@ -266,7 +266,6 @@ fn inserting_nodes_updates_consequences_and_roots() {
 #[test]
 fn removing_nodes_updates_consequences_of_roots() {
     let mut g = test_graph();
-    let key = Assignment(3, True);
     let vars = g.strip(4, True);
 
     // pre-strip 4+
@@ -552,7 +551,7 @@ fn find_path_finds_all_paths() {
     // 0             \       6
     //  \-- 3 --------- 4 --/
     //
-    let mut g = ImplicationGraph::from(&[
+    let g = ImplicationGraph::from(&[
         (1, (0, False), &[]),
         (1, (1, False), &[(0, False)]),
         (1, (2, False), &[(1, False)]),
@@ -572,7 +571,7 @@ fn find_paths_finds_shortest_path_first() {
     // 0                     6
     //  \-- 3 --------- 4 --/
     //
-    let mut g = ImplicationGraph::from(&[
+    let g = ImplicationGraph::from(&[
         (1, (0, False), &[]),
         (1, (1, False), &[(0, False)]),
         (1, (2, False), &[(1, False)]),

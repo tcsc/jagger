@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::{Keys, Iter};
 use std::iter::{FromIterator, range_step};
-use std::ops::{Index, IndexMut};
+use std::ops::Index;
 use std::fmt;
 use log;
 
@@ -65,7 +65,7 @@ fn pick_var(vars: &VarSet) -> Var {
 
 fn scan_unassigned_vars(varcount: usize, sln: &Solution) -> VarSet {
     let mut result = VarSet::new();
-    for v in range(1, varcount+1) {
+    for v in (1 .. varcount+1) {
         if !sln.is_assigned(v) { result.insert(v); }
     }
     result
@@ -181,7 +181,7 @@ fn trying_valid_assignment_on_new_var_succeeds() {
         &[Lit(2), Not(6)]
     ]);
     let mut state = SolveState {
-        unassigned_vars: FromIterator::from_iter(range(1,6).filter(|x| *x != 5)),
+        unassigned_vars: FromIterator::from_iter((1..6).filter(|x| *x != 5)),
         solution: Solution::new(6),
         implications: ImplicationGraph::new(),
         stack: DecisionStack::new()
@@ -226,7 +226,7 @@ struct SolveState {
 impl SolveState {
     fn new(varcount: usize) -> SolveState {
         SolveState {
-            unassigned_vars: FromIterator::from_iter(range(1, varcount+1)),
+            unassigned_vars: FromIterator::from_iter(1..varcount+1),
             implications: ImplicationGraph::new(),
             solution: Solution::new(varcount),
             stack: DecisionStack::new()
@@ -314,7 +314,7 @@ fn stack_unwound_to_expected_point() {
     // roll back the decision stack such that all of the supplied variables
     // are unset.
     let missing_vars : VarSet = FromIterator::from_iter(
-        [10us, 5us, 8us].iter().map(|x| *x));
+        [10, 5, 8].iter().map(|x| *x));
 
     // check that the unwind returns the last decision variable it unset
     // during the rollback
@@ -328,12 +328,12 @@ fn stack_unwound_to_expected_point() {
 
     // assert that all variables prior to the rollback point are still
     // assigned
-    assert!(range(1, 5).all(|n| state.solution[n] != Unassigned));
+    assert!((1..5).all(|n| state.solution[n] != Unassigned));
 
     // assert that all variables after the rollback point have been unassigned
     // and their implications have been deleted
-    assert!(range(5, 11).all(|n| state.solution[n] == Unassigned));
-    assert!(range(5, 11).all(|n| !state.implications.has(n)));
+    assert!((5..11).all(|n| state.solution[n] == Unassigned));
+    assert!((5..11).all(|n| !state.implications.has(n)));
 
     assert!(4 == state.implications.len(),
         "Expected a 4-element implication graph, got {:?}",
@@ -416,13 +416,13 @@ fn solver_completes() {
         Some(sln) => {
             debug!("Solution: {:?}", sln);
 
-            println!("+++ {:?}, {:?}", sln, range(1us, 8us).all(|x| {
+            println!("+++ {:?}, {:?}", sln, range(1, 8).all(|x| {
                 println!(">>> sln[{:?}] == {:?} (!= Unassigned? {:?}) ",
                          x, sln[x], sln[x] != Unassigned);
                 sln[x] != Unassigned
             }));
 
-            assert!(range(1us, 8us).all(|x| sln[x] != Unassigned),
+            assert!(range(1, 8).all(|x| sln[x] != Unassigned),
                     "Expected all values to be assigned, got {:?} instead",
                     sln);
 
@@ -569,7 +569,7 @@ impl PropagationResult {
     }
 }
 
-static mut dump_idx : usize = 0us;
+static mut dump_idx : usize = 0;
 
 unsafe fn get_dump_idx() -> usize {
     let r = dump_idx;
@@ -632,7 +632,7 @@ fn propagate(level: usize,
                     println!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
                     let roots = extract_var_roots(var, clause, &state.solution);
 
-                    state.implications.insert(level, var, deduced_value, &roots[]);
+                    state.implications.insert(level, var, deduced_value, &roots[..]);
                     state.unassigned_vars.remove(&var);
 
                     // Do we have any previouly-deduced values for the thing we

@@ -373,7 +373,7 @@ fn package_requirement_clauses_are_created_correctly() {
 fn pkg_vec<F>(n: usize, f: F) -> Vec<Package> where
     F: FnMut(usize) -> Package
 {
-    FromIterator::from_iter(range(0, n).map(f))
+    FromIterator::from_iter((0..n).map(f))
 }
 
 #[cfg(test)]

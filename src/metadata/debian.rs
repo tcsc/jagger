@@ -283,12 +283,12 @@ fn extract_epoch<'a>(s: &'a str) -> VerResult<(isize, &'a str)> {
     match s.find(':') {
         None => Ok((0, s)),
         Some(n) => {
-            let text = s.slice_to(n);
+            let text = &s[..n];
             let epoch = match FromStr::from_str(text) {
                 Ok(e) => e,
                 Err(_) => return Err(VersionError::epoch(text))
             };
-            let remainder = s.slice_from(n+1);
+            let remainder = &s[n+1..];
             Ok((epoch, remainder))
         }
     }
@@ -323,7 +323,7 @@ fn non_integer_epoch_is_an_error() {
 fn extract_upstream<'a>(s: &'a str) -> Option<(&'a str, &'a str)> {
     match s.rfind('-') {
         Some(n) if n == s.len() - 1 => None,
-        Some(n) => Some((s.slice_to(n), s.slice_from(n+1))),
+        Some(n) => Some((&s[..n], &s[n+1..])),
         None => Some((s, ""))
     }
 }
@@ -352,15 +352,15 @@ fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
     while text.len() > 0 {
         // grab all leading nondigit characters
         let p = text.find(|&: c:char| c.is_digit(10)).unwrap_or(text.len());
-        let prefix = text.slice_to(p);
-        text = text.slice_from(p);
+        let prefix = &text[..p];
+        text = &text[p..];
 
         debug!("p: {:?}, prefix: \"{:?}\", text: {:?}", p, prefix, text);
 
         // grab all leading digit chars
         let d = text.find(|&: c:char| !c.is_digit(10)).unwrap_or(text.len());
-        let digits = text.slice_to(d);
-        text = text.slice_from(d);
+        let digits = &text[..d];
+        text = &text[d..];
 
         debug!("d: {:?}, digits: \"{:?}\", text: {:?}", d, digits, text);
 
@@ -452,7 +452,6 @@ impl PartialEq<Version> for Version {
             Some(_) => false,
             None => {
                 panic!("This should never, ever happen.");
-                false
             }
         }
     }
@@ -463,7 +462,7 @@ impl PartialOrd for Version {
         match self.epoch.cmp(&other.epoch) {
             Equal => {
                 // compare the chunks left-to-right, as far as we can
-                let mut chunks = self.chunks.iter().zip(other.chunks.iter());
+                let chunks = self.chunks.iter().zip(other.chunks.iter());
                 for (ref s, ref o) in chunks {
                     match debian_cmp(&s.prefix[..], &o.prefix[..]) {
                         Equal => {
@@ -487,7 +486,7 @@ impl PartialOrd for Version {
                     _ => {
                         // If both chunk strings are the same length, then
                         // compare the package revision and return that
-                        let rval = debian_cmp(&self.revision[], &other.revision[]);
+                        let rval = debian_cmp(&self.revision[..], &other.revision[..]);
                         return Some(rval);
                     }
                 }

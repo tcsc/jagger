@@ -2,8 +2,7 @@
  * A set implemented as a binary vector.
  */
 use std::cmp::Ordering;
-use std::iter::{range_step, repeat};
-use std::iter::{FromIterator, IntoIterator};
+use std::iter::{FromIterator, IntoIterator, range_step};
 use std::default::Default;
 use std::slice;
 
@@ -113,7 +112,7 @@ fn new_vecset_is_empty() {
 #[test]
 fn inserting_elements_affects_size() {
     let mut s : VecSet<usize> = VecSet::new();
-    for x in range(0, 100) {
+    for x in (0 .. 100) {
         s.insert(x);
         assert_eq!(x+1, s.len());
     }
@@ -121,7 +120,7 @@ fn inserting_elements_affects_size() {
 
 #[test]
 fn inserting_duplicates_does_not_affect_size() {
-    let mut s : VecSet<isize> = FromIterator::from_iter(range(1,5));
+    let mut s : VecSet<isize> = FromIterator::from_iter(1..5);
     s.insert(1);
     s.insert(2);
     s.insert(3);
@@ -148,7 +147,7 @@ fn removing_items_from_empty_set_returns_false(){
 
 #[test]
 fn removing_item_returns_true() {
-    let mut set : VecSet<isize> = FromIterator::from_iter(range(0,5));
+    let mut set : VecSet<isize> = FromIterator::from_iter((0..5));
     assert_eq!(5, set.len());
     assert_eq!(true, set.remove(&3));
     assert_eq!(4, set.len());
@@ -158,7 +157,7 @@ fn removing_item_returns_true() {
 
 #[test]
 fn removing_first_item_returns_true() {
-    let mut set : VecSet<isize> = FromIterator::from_iter(range(0,5));
+    let mut set : VecSet<isize> = FromIterator::from_iter((0..5));
     assert_eq!(5, set.len());
     assert_eq!(true, set.remove(&0));
     assert_eq!(4, set.len());
@@ -168,7 +167,7 @@ fn removing_first_item_returns_true() {
 
 #[test]
 fn removing_last_item_returns_true() {
-    let mut set : VecSet<isize> = FromIterator::from_iter(range(0,5));
+    let mut set : VecSet<isize> = FromIterator::from_iter((0..5));
     assert_eq!(5, set.len());
     assert_eq!(true, set.remove(&4));
     assert_eq!(4, set.len());
@@ -177,7 +176,7 @@ fn removing_last_item_returns_true() {
 }
 #[test]
 fn removing_non_existant_items_returns_false(){
-    let mut set : VecSet<isize> = FromIterator::from_iter(range(0,5));
+    let mut set : VecSet<isize> = FromIterator::from_iter((0..5));
     assert_eq!(5, set.len());
     assert_eq!(false, set.remove(&42));
     assert_eq!(5, set.len());
@@ -185,7 +184,7 @@ fn removing_non_existant_items_returns_false(){
 
 
 #[cfg(test)]
-static RandomTestData : &'static [usize] = &[
+static RANDOM_TEST_DATA : &'static [usize] = &[
     57,  84,  22,  88,  21,
     71,  71,  10,  3,   56,
      9,  81,  78,  46,  84,
@@ -212,8 +211,8 @@ static RandomTestData : &'static [usize] = &[
 fn insert_1000_32_vecset(b: &mut Bencher) {
     b.iter(|| {
         let mut v : VecSet<(u64, u64)> = VecSet::new();
-        for i in range(0, 10) {
-            for x in RandomTestData.iter() {
+        for i in (0 .. 10) {
+            for x in RANDOM_TEST_DATA.iter() {
                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
                 v.insert((val, val));
             }
@@ -228,7 +227,7 @@ fn insert_1000_32_vecset(b: &mut Bencher) {
 //
 //     b.iter(|| {
 //         let mut v : HashSet<(u64, u64)> = HashSet::new();
-//         for i in range(0, 10) {
+//         for i in (0 .. 10) {
 //             for x in RandomTestData.iter() {
 //                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //                 v.insert((val, val));
@@ -240,8 +239,8 @@ fn insert_1000_32_vecset(b: &mut Bencher) {
 #[bench]
 fn remove_1000_32_vecset(b: &mut Bencher) {
     let mut s : VecSet<(u64, u64)> = VecSet::new();
-    for i in range(0, 50) {
-        for x in RandomTestData.iter() {
+    for i in (0 .. 50) {
+        for x in RANDOM_TEST_DATA.iter() {
             let val : u64 = (*x as u64) * 100 * (i+1) as u64;
             s.insert((val, val));
         }
@@ -249,8 +248,8 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
 
     b.iter(|| {
         let mut v = s.clone();
-        for i in range(0, 50) {
-            for x in RandomTestData.iter() {
+        for i in (0 .. 50) {
+            for x in RANDOM_TEST_DATA.iter() {
                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
                 v.remove(&(val, val));
             }
@@ -263,8 +262,8 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
 //     use std::collections::HashSet;
 //
 //     let mut s : HashSet<(u64, u64)> = HashSet::new();
-//     for i in range(0, 50) {
-//         for x in RandomTestData.iter() {
+//     for i in  (0 .. 50) {
+//         for x in RANDOM_TEST_DATA.iter() {
 //             let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //             s.insert((val, val));
 //         }
@@ -272,8 +271,8 @@ fn remove_1000_32_vecset(b: &mut Bencher) {
 //
 //     b.iter(|| {
 //         let mut v = s.clone();
-//         for i in range(0, 50) {
-//             for x in RandomTestData.iter() {
+//         for i in (0 .. 50) {
+//             for x in RANDOM_TEST_DATA.iter() {
 //                 let val : u64 = (*x as u64) * 100 * (i+1) as u64;
 //                 v.remove(&(val, val));
 //             }
@@ -325,15 +324,15 @@ impl<T: Ord> Extend<T> for VecSet<T> {
 #[test]
 fn extending_inserts_elements() {
     let mut s = VecSet::<usize>::new();
-    s.extend(range(0,100));
+    s.extend(0 .. 100);
     assert_eq!(100, s.len());
 }
 
 #[test]
 fn extending_does_not_insert_duplicates_elements() {
     let mut s = VecSet::<usize>::new();
-    s.extend(range(0,100));
-    s.extend(range(0,100));
+    s.extend(0..100);
+    s.extend(0..100);
     assert_eq!(100, s.len());
 }
 
@@ -434,7 +433,7 @@ fn new_vecmap_is_empty() {
 #[test]
 fn inserting_elements_affects_vecmap_size() {
     let mut m : VecMap<usize,String> = VecMap::new();
-    for x in range(0, 100) {
+    for x in (0 .. 100) {
         m.insert(x, format!("{:?}", x));
         assert_eq!(x+1, m.len());
     }
@@ -443,10 +442,10 @@ fn inserting_elements_affects_vecmap_size() {
 #[test]
 fn inserting_items_are_findable() {
     let mut m : VecMap<usize,String> = VecMap::new();
-    for x in range(0, 100) {
+    for x in (0 .. 100) {
         m.insert(x, format!("{:?}", x));
     }
-    for x in range(0, 100) {
+    for x in (0 .. 100) {
         let text = format!("{:?}", x);
         match m.get(&x) {
             Some(s) => assert!(*s == text),
@@ -515,7 +514,7 @@ impl<K: Ord, V: Clone> Extend<(K, V)> for VecMap<K, V> {
 #[test]
 fn extending_vecmap_inserts_elements() {
     let mut s = VecSet::<usize>::new();
-    s.extend(range(0,100));
+    s.extend(0 .. 100);
     assert_eq!(100, s.len());
 }
 
@@ -569,8 +568,8 @@ fn lower_bound_gives_sensible_bound_on_larger_than_largest_element() {
 
 #[test]
 fn lower_bound_finds_existing_elements() {
-    let data : Vec<usize> = FromIterator::from_iter(range(0, 100));
-    for x in range(0, 100) {
+    let data : Vec<usize> = FromIterator::from_iter((0..100));
+    for x in (0..100) {
         assert_eq!(x, lower_bound(&data[..], &x));
     }
 }
@@ -578,7 +577,7 @@ fn lower_bound_finds_existing_elements() {
 #[test]
 fn lower_bound_finds_appropriate_bound() {
     let data : Vec<usize> = FromIterator::from_iter(range_step(0, 100, 3));
-    for x in range(0, 100) {
+    for x in (0 .. 100) {
         assert_eq!((2 + x)/3, lower_bound(&data[..], &x));
     }
 }
