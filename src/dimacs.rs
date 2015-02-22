@@ -59,7 +59,7 @@ fn read_clause(s: &str) -> Result<Vec<Term>, DimacsError> {
         match try!(read_int(item)) {
             n if n > 0 => clause.push(Lit(n as usize)),
             n if n < 0 => clause.push(Not(n.abs() as usize)),
-            n => { break; }
+            _ => { break; }
         };
     }
     Ok(clause)
@@ -144,9 +144,7 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
 fn make_buffer(lines: &[&str]) -> old_io::MemReader {
     let mut text = old_io::MemWriter::new();
     for s in lines.iter() {
-        match text.write_str(*s) {
-            n => {}
-        }
+        text.write_str(*s);
     }
     old_io::MemReader::new( text.into_inner() )
 }

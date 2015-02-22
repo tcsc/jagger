@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use graphviz as dot;
 
-use solver::types::{Solution, Expression, Var, VarSet, Clause};
+use solver::types::{Var, Clause};
 use solver::types::Term::{self, Lit, Not};
 use solver::types::SolutionValue::{self, True, False, Unassigned};
 use collections::VecSet;

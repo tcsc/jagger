@@ -62,7 +62,7 @@ impl PartialEq for VersionExpression {
     }
 }
 
-impl fmt::Show for VersionExpression {
+impl fmt::Debug for VersionExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Any => write!(f, "any"),
@@ -175,7 +175,7 @@ impl PartialEq for PkgExp {
     }
 }
 
-impl fmt::Show for PkgExp {
+impl fmt::Debug for PkgExp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} {:?}", self.name, self.version)
     }
@@ -323,7 +323,7 @@ impl Clone for Package {
     }
 }
 
-impl fmt::Show for Package {
+impl fmt::Debug for Package {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} #{}", self.name, self.ordinal)
     }
