@@ -1,6 +1,6 @@
 /**
  * Implements the 2-literal watch list algorithm. Currently on hold because I
- * obviously don't understand the algorithm and the data structures required. 
+ * obviously don't understand the algorithm and the data structures required.
  */
 
 use std::collections::{HashMap};
@@ -12,10 +12,10 @@ use solver::types::SolutionValue::{self, True, False, Unassigned};
 use solver::types::Term::{self, Lit, Not};
 
 /**
- * Keeps track of which variables are watched by what clauses. 
+ * Keeps track of which variables are watched by what clauses.
  */
 pub struct Watchlist {
-	// keeps track of terms in each clause are being watched   
+	// keeps track of terms in each clause are being watched
 	watches: Vec<(Var, Var)>,
 
 	// maps variables to the clauses they appear in
@@ -24,15 +24,15 @@ pub struct Watchlist {
 
 impl Watchlist {
 	pub fn new<I: Iterator<Item=Clause>>(clauses: I, sln: &Solution) -> Watchlist {
-		let mut watchlist = Watchlist { 
-			watches: Vec::new(), 
+		let mut watchlist = Watchlist {
+			watches: Vec::new(),
 		    clauses_watching: HashMap::new()
 		};
 		for (i, ref clause) in clauses.enumerate() {
 			watchlist.add_clause(i, clause, sln);
 		}
 		watchlist
-	} 
+	}
 
 	/**
 	 * Adds a clause to the watchlist and indexes it.
@@ -59,15 +59,15 @@ impl Watchlist {
 		// match self.clauses_watching.get(&v) {
 		// 	Some(watch_clauses) => {
 		// 		for c in watch_clauses {
-		// 			let other_watch = 
+		// 			let other_watch =
 		// 				match self.watches[c] {
 		// 					(Some(v), other) => other,
 		// 					(other, Some(v)) => other,
 		// 					_ => { panic!("This should not happen"); None }
 		// 				};
 
-		// 			// decide our watches 
-		// 			let new_watch_pair = 
+		// 			// decide our watches
+		// 			let new_watch_pair =
 		// 				match pick_watch(clauses[c], sln, other_watch) {
 		// 					None => {
 		// 						// oops, we're down one unassigned var. Leave the watched
@@ -90,7 +90,7 @@ impl Watchlist {
 // ----------------------------------------------------------------------------
 
 /**
- * Picks a watch variable. The watch variable selected may not be assigned a 
+ * Picks a watch variable. The watch variable selected may not be assigned a
  * value, nor be the same variable as an existing watch.
  */
 fn pick_watch(clause: &Clause, sln: &Solution, other_watch: Option<Var>) -> Option<Var> {
@@ -170,7 +170,7 @@ fn record_watch_on_new_var_adds_entry() {
 	// asserts that adding a mapping on a previously-unmapped var succeeds
 	let mut map = HashMap::new();
 	record_watch(&mut map, 7, 42);
-	assert!(map.get(&7).unwrap().as_slice() == [42]);
+	assert!(&map.get(&7).unwrap()[..] == [42]);
 }
 
 #[test]
@@ -181,5 +181,5 @@ fn record_watch_on_existing_var_adds_entry() {
 	record_watch(&mut map, 7, 42);
 	let mut v = map.get(&7).unwrap().clone();
 	v.sort();
-	assert!(v.as_slice() == [1, 2, 3, 4, 42]);
+	assert!(&v[..] == [1, 2, 3, 4, 42]);
 }

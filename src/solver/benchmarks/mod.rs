@@ -1,4 +1,3 @@
-use std::io;
 use test::Bencher;
 use solver::Solution;
 

@@ -416,13 +416,13 @@ fn solver_completes() {
         Some(sln) => {
             debug!("Solution: {:?}", sln);
 
-            println!("+++ {:?}, {:?}", sln, range(1, 8).all(|x| {
+            println!("+++ {:?}, {:?}", sln, (1..8).all(|x| {
                 println!(">>> sln[{:?}] == {:?} (!= Unassigned? {:?}) ",
                          x, sln[x], sln[x] != Unassigned);
                 sln[x] != Unassigned
             }));
 
-            assert!(range(1, 8).all(|x| sln[x] != Unassigned),
+            assert!((1..8).all(|x| sln[x] != Unassigned),
                     "Expected all values to be assigned, got {:?} instead",
                     sln);
 
@@ -783,7 +783,7 @@ fn propagation_detects_evaluation_to_false() {
             assert_eq!(state.solution[3], False);
             assert_eq!(state.solution[4], Unassigned);
             assert_eq!(state.implications.len(), 3);
-            for x in range(1,3) {
+            for x in (1..3) {
                 assert!(state.implications.has(x));
             }
         },

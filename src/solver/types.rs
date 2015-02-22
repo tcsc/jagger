@@ -420,7 +420,7 @@ impl<'a> Iterator for ClauseIterator<'a> {
         match self.items.next() {
             None => None,
             Some(idx) => {
-                Some(self.exp[*idx].terms().as_slice())
+                Some(&self.exp[*idx].terms()[..])
             }
         }
     }

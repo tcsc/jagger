@@ -1,5 +1,5 @@
 use std::old_io;
-use std::num::{self, SignedInt};
+use std::num::SignedInt;
 use std::str::FromStr;
 use solver::{Expression, Term};
 use solver::Term::{Lit, Not};
@@ -144,7 +144,12 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
 fn make_buffer(lines: &[&str]) -> old_io::MemReader {
     let mut text = old_io::MemWriter::new();
     for s in lines.iter() {
-        text.write_str(*s);
+        match text.write_str(*s) {
+            Ok(_) => {},
+            Err(e) => {
+                panic!("Write into MemReader failed with {:?}", e)
+            }
+        }
     }
     old_io::MemReader::new( text.into_inner() )
 }
