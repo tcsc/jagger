@@ -9,7 +9,7 @@ use solver::types::{Solution, SolutionValue, Expression, Var, VarSet, Clause, Te
 use solver::types::SolutionValue::{Unassigned, True, False, Conflict};
 use solver::types::Term::{Lit, Not};
 use solver::implication_graph::{ImplicationGraph, dump_graph};
-use collections::VecMap;
+use collections::{VecSet, VecMap};
 
 // ----------------------------------------------------------------------------
 //
@@ -251,29 +251,6 @@ impl SolveState {
         vars
     }
 
-    /**
-     * Unwinds the state stack until all decisions affecting the variables in
-     * the supplied set have been undone. Fails hard if the unwinding tries to
-     * go past the end of the stack.
-     */
-    fn unwind(&mut self, mut vars: VarSet) -> (Var, SolutionValue) {
-        println!("Unwinding for: {:?}", vars);
-        loop {
-            match self.pop() {
-                None => panic!("Attempting to unwind an empty stack"),
-                Some(d) => {
-                    let implications = self.undo_decision(&d);
-                    for v in implications.iter() {
-                        vars.remove(v);
-                    }
-                    if vars.is_empty() {
-                        return (d.var, d.value)
-                    }
-                }
-            }
-        }
-    }
-
     fn push(&mut self, var: Var, val: SolutionValue) {
         self.stack.push(var, val)
     }
@@ -288,6 +265,26 @@ impl SolveState {
 
     fn depth(&self) -> usize {
         self.stack.len()
+    }
+
+    /**
+     * Unwinds the state stack until all decisions affecting the variables in
+     * the supplied set have been undone. Fails hard if the unwinding tries to
+     * go past the end of the stack.
+     */
+    fn unwind(&mut self, mut vars: VecSet<Var>) {
+        println!("Unwinding for: {:?}", vars);
+        while !vars.is_empty() {
+            match self.pop() {
+                None => panic!("Attempting to unwind an empty stack"),
+                Some(d) => {
+                    let vars_to_reset = self.undo_decision(&d);
+                    for v in vars_to_reset.iter() {
+                        vars.remove(v);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -313,14 +310,12 @@ fn stack_unwound_to_expected_point() {
 
     // roll back the decision stack such that all of the supplied variables
     // are unset.
-    let missing_vars : VarSet = FromIterator::from_iter(
+    let missing_vars : VecSet<Var> = FromIterator::from_iter(
         [10, 5, 8].iter().map(|x| *x));
 
     // check that the unwind returns the last decision variable it unset
     // during the rollback
-    let (var, val) = state.unwind(missing_vars);
-    assert!(var == 5);
-    assert!(val == True);
+    state.unwind(missing_vars);
 
     // Check that the decision stack is now the size we expect from a
     // post-rollback stack
@@ -349,6 +344,8 @@ pub fn solve(exp: &Expression,
     let mut state = SolveState::new(varcount);
     let mut next_move = SolverMove::Continue;
     let mut e = exp.clone();
+
+    println!("========");
 
     while state.has_unassigned_vars() {
         let (decision_var, decision_val) = match next_move {
@@ -380,12 +377,18 @@ pub fn solve(exp: &Expression,
             },
 
             PropagationResult::Contradiction (conflict) => {
+                println!("Contradiction");
                 let new_rule = state.implications.learn_conflict_clause(
                                     decision_var,
                                     decision_val,
                                     conflict);
-                //e.add(&new_rule);
-                //rollback(state, new_rule);
+                println!("Learned {:?}", new_rule);
+                let vars : VecSet<Var> = FromIterator::from_iter(
+                    new_rule.iter().map(|t| t.var())
+                );
+                state.unwind(vars);
+                e.add_clause(new_rule);
+                next_move = SolverMove::Continue;
             },
 
             PropagationResult::EvaluatesToFalse => {
@@ -632,15 +635,14 @@ fn propagate(level: usize,
                     println!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
                     let roots = extract_var_roots(var, clause, &state.solution);
 
-                    state.implications.insert(level, var, deduced_value, &roots[..]);
-                    state.unassigned_vars.remove(&var);
-
                     // Do we have any previouly-deduced values for the thing we
                     // just decided on?
                     match *(deduced.get(&var).unwrap_or(&Unassigned)) {
                         // no? good! record our deduction and queue the variable for later
                         // processing
                         Unassigned => {
+                            state.implications.insert(level, var, deduced_value, &roots[..]);
+                            state.unassigned_vars.remove(&var);
                             deduced.insert(var, deduced_value);
                             queue.push(var);
                         },
@@ -648,6 +650,7 @@ fn propagate(level: usize,
                         // yes, but it contradicts what we have just deduced
                         x if (x != deduced_value) => {
                             debug!("\t\tDetected contradiction on {:?}!", var);
+                            state.implications.insert(level, var, deduced_value, &roots[..]);
                             state.solution[var] = Conflict;
 
                             // unsafe {

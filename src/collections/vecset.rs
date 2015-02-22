@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::iter::{FromIterator, IntoIterator, range_step};
 use std::default::Default;
 use std::slice;
+use std::fmt;
 
 use test::Bencher;
 
@@ -336,6 +337,15 @@ fn extending_does_not_insert_duplicates_elements() {
     assert_eq!(100, s.len());
 }
 
+// ----------------------------------------------------------------------------
+//
+// ----------------------------------------------------------------------------
+
+impl<T: fmt::Debug> fmt::Debug for VecSet<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.items.fmt(f)
+    }
+}
 
 // ----------------------------------------------------------------------------
 // A map stored in a vector
