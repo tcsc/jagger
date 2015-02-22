@@ -1,10 +1,9 @@
 /**
  * A set implemented as a binary vector.
  */
-use std::borrow::BorrowFrom;
 use std::cmp::Ordering;
 use std::iter::{range_step, repeat};
-use std::iter::FromIterator;
+use std::iter::{FromIterator, IntoIterator};
 use std::default::Default;
 use std::slice;
 
@@ -304,7 +303,7 @@ fn default_vecset_is_empty() {
 // ----------------------------------------------------------------------------
 
 impl<T: Ord> FromIterator<T> for VecSet<T> {
-    fn from_iter<I: Iterator<Item=T>>(iter: I) -> VecSet<T> {
+    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> VecSet<T> {
         let mut result = VecSet::new();
         result.extend(iter);
         result
@@ -316,7 +315,7 @@ impl<T: Ord> FromIterator<T> for VecSet<T> {
 // ----------------------------------------------------------------------------
 
 impl<T: Ord> Extend<T> for VecSet<T> {
-    fn extend<I: Iterator<Item=T>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
         for v in iter {
             self.insert(v);
         }
@@ -506,7 +505,7 @@ fn default_vecmap_is_empty() {
 // ----------------------------------------------------------------------------
 
 impl<K: Ord, V: Clone> Extend<(K, V)> for VecMap<K, V> {
-    fn extend<I: Iterator<Item=(K, V)>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item=(K, V)>>(&mut self, iter: I) {
         for (k, v) in iter {
             self.insert(k, v);
         }

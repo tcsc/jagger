@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops;
 use std::cmp;
 use std::slice;
-use std::iter::{FromIterator, repeat};
+use std::iter::{FromIterator, IntoIterator, repeat};
 use std::collections;
 use std::collections::{BTreeSet, VecMap};
 
@@ -51,13 +51,13 @@ impl VarSet {
 }
 
 impl FromIterator<Var> for VarSet {
-    fn from_iter<I: Iterator<Item=Var>>(iter: I) -> VarSet {
+    fn from_iter<I: IntoIterator<Item=Var>>(iter: I) -> VarSet {
         VarSet(FromIterator::from_iter(iter))
     }
 }
 
 impl Extend<Var> for VarSet {
-    fn extend<I: Iterator<Item=Var>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item=Var>>(&mut self, iter: I) {
         let VarSet(ref mut this) = *self;
         this.extend(iter)
     }
@@ -363,7 +363,7 @@ impl Clause {
 }
 
 impl FromIterator<Term> for Clause {
-    fn from_iter<I: Iterator<Item=Term>>(terms: I) -> Clause {
+    fn from_iter<I: IntoIterator<Item=Term>>(terms: I) -> Clause {
         let mut r = Clause::new();
         for t in terms {
             r.add(t.clone())

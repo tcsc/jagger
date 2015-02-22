@@ -1,4 +1,4 @@
-use std::collections::{HashMap, RingBuf};
+use std::collections::{HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::borrow::Cow;
 
@@ -513,7 +513,7 @@ fn find_first_uip_picks_correct_point() {
  */
 fn find_paths(g: &GraphImpl, src: Assignment, dst: Assignment) -> Vec<Assignments> {
     let mut result : Vec<Assignments> = Vec::new();
-    let mut queue : RingBuf<(Assignment, Assignments)> = RingBuf::new();
+    let mut queue : VecDeque<(Assignment, Assignments)> = VecDeque::new();
     queue.push_back((src, vec!(src)));
 
     while !queue.is_empty() {

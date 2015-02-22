@@ -1,4 +1,4 @@
-use std::collections::{HashMap, BitvSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::iter::FromIterator;
 use solver::{Term, Clause, Solution, SolutionValue, Var};
@@ -106,8 +106,10 @@ impl<'a> fmt::Debug for Solver<'a> {
  *  (~A1 | ~A2) & (~A1 | ~A3) & (~A2 | ~A3)
  */
 fn make_unique_install_clauses(s: &Solver, name: &str) -> FormulatorResult<Vec<Clause>> {
-    let mut result = vec![];
-    let mut visited = BitvSet::new();
+    use collections::VecSet;
+
+    let mut result = Vec::new();
+    let mut visited = VecSet::new();
     let pkgs = try!(s.pkg_vars(name, VersionExpression::Any));
 
     for a in pkgs.iter() {
