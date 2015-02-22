@@ -336,7 +336,7 @@ pub struct Clause {
 
 impl Clause {
     pub fn new() -> Clause {
-        Clause { terms: vec![]}
+        Clause { terms: Vec::new() }
     }
 
     pub fn from(terms: &[Term]) -> Clause {
@@ -354,7 +354,7 @@ impl Clause {
     }
 
     pub fn terms(&self) -> &[Term] {
-        &self.terms[]
+        &self.terms[..]
     }
 
     pub fn iter(&self) -> slice::Iter<Term> {

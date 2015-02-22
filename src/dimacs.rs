@@ -117,7 +117,7 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
     for line in buf.lines() {
         match line {
             Ok(s) => {
-                let line = s[].trim();
+                let line = s[..].trim();
                 match line.chars().next() {
                     None => {  /* empty line */ },
                     Some(c) if c == 'c' => { /* comment */ },
@@ -135,9 +135,9 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
     }
 
     let slices : Vec<&[Term]> = clauses.iter()
-                                       .map(|v| &v[])
+                                       .map(|v| &v[..])
                                        .collect();
-    Ok(Problem::new(nvars as usize, &slices[]))
+    Ok(Problem::new(nvars as usize, &slices[..]))
 }
 
 #[cfg(test)]

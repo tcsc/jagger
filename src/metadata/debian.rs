@@ -141,7 +141,7 @@ fn parse_arch(a: &str) -> ArchResult<Architecture> {
     }
     else {
         let part_strings : Vec<&str> = a.split('-').collect();
-        let parts = &part_strings[];
+        let parts = &part_strings[..];
         match parts.len() {
             1 => parse_alias(parts[0]),
             n @ 2 ... 3 => {
@@ -347,7 +347,7 @@ fn trailing_revision_separator_reports_error_but_does_not_crash() {
  * version sorting algorithm.
  */
 fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
-    let mut result = vec![];
+    let mut result = Vec::new();
     let mut text = s;
     while text.len() > 0 {
         // grab all leading nondigit characters
@@ -465,7 +465,7 @@ impl PartialOrd for Version {
                 // compare the chunks left-to-right, as far as we can
                 let mut chunks = self.chunks.iter().zip(other.chunks.iter());
                 for (ref s, ref o) in chunks {
-                    match debian_cmp(&s.prefix[], &o.prefix[]) {
+                    match debian_cmp(&s.prefix[..], &o.prefix[..]) {
                         Equal => {
                             match s.number.cmp(&o.number) {
                                 Equal => {},

@@ -246,7 +246,7 @@ impl Package {
      *
      */
     pub fn requires<'a>(&'a self) -> &'a [PkgExp] {
-        &self.requires[]
+        &self.requires[..]
     }
 
     pub fn add_conflict(&mut self, name: &str, ver: VersionExpression) {
@@ -254,7 +254,7 @@ impl Package {
     }
 
     pub fn conflicts<'a>(&'a self) -> &'a [PkgExp] {
-        &self.conflicts[]
+        &self.conflicts[..]
     }
 
     /**
@@ -266,7 +266,7 @@ impl Package {
     }
 
     pub fn name<'a>(&'a self) -> &'a str {
-        &self.name[]
+        &self.name[..]
     }
 
     pub fn ordinal(&self) -> Ordinal { self.ordinal }
@@ -276,8 +276,8 @@ impl PartialEq for Package {
     fn eq(&self, other: &Package) -> bool {
         if self.name != other.name { return false };
         if self.ordinal != other.ordinal { return false };
-        if &self.requires[] != &other.requires[] { return false };
-        if &self.conflicts[] != &other.conflicts[] { return false };
+        if &self.requires[..] != &other.requires[..] { return false };
+        if &self.conflicts[..] != &other.conflicts[..] { return false };
         true
     }
 }
@@ -400,7 +400,7 @@ fn pkgdb_empty_select_returns_empty_vector() {
     let mut db = PkgDb::new();
     db.add_packages(&pkg_vec(5, |n| {
         Package::new("alpha", n, State::Available)
-    })[]);
+    })[..]);
     assert!(db.select("nonesuch", gt(10)).is_empty())
 }
 
@@ -409,15 +409,15 @@ fn pkgdb_select_returns_expected_packages() {
     let mut db = PkgDb::new();
     db.add_packages(&pkg_vec(5, |n| {
         Package::new("alpha", n, State::Available)
-    })[]);
+    })[..]);
     db.add_packages(&pkg_vec(10, |n| {
         Package::new("beta", n, State::Available)
-    })[]);
+    })[..]);
 
     let data = pkg_vec(4, |n| Package::new_available("beta", n + 6));
     let expected : Vec<&Package> = data.iter().map(|p| p).collect();
     let actual = db.select("beta", gte(6));
 
-    assert!(&expected[] == &actual[],
+    assert!(&expected[..] == &actual[..],
             "expected: {:?}, got: {:?}", expected, actual);
 }
