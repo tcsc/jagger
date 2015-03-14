@@ -351,14 +351,14 @@ fn parse_upstream(s: &str) -> VerResult<Vec<VersionChunk>> {
     let mut text = s;
     while text.len() > 0 {
         // grab all leading nondigit characters
-        let p = text.find(|&: c:char| c.is_digit(10)).unwrap_or(text.len());
+        let p = text.find(|c: char| c.is_digit(10)).unwrap_or(text.len());
         let prefix = &text[..p];
         text = &text[p..];
 
         debug!("p: {:?}, prefix: \"{:?}\", text: {:?}", p, prefix, text);
 
         // grab all leading digit chars
-        let d = text.find(|&: c:char| !c.is_digit(10)).unwrap_or(text.len());
+        let d = text.find(|c: char| !c.is_digit(10)).unwrap_or(text.len());
         let digits = &text[..d];
         text = &text[d..];
 

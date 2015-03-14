@@ -1,4 +1,4 @@
-use std::old_io;
+use std::io;
 use std::num::SignedInt;
 use std::str::FromStr;
 use solver::{Expression, Term};
@@ -28,7 +28,7 @@ impl Problem {
 
 #[derive(Debug, PartialEq)]
 pub enum DimacsError {
-    IoFailure (old_io::IoError),
+    IoFailure (io::Error),
     ParseFailure (String)
 }
 
@@ -36,7 +36,7 @@ fn parse_failure<T>(s: String) -> Result<T, DimacsError> {
     Err(DimacsError::ParseFailure(s))
 }
 
-fn io_failure<T>(err: old_io::IoError) -> Result<T, DimacsError> {
+fn io_failure<T>(err: io::Error) -> Result<T, DimacsError> {
     Err(DimacsError::IoFailure(err))
 }
 
@@ -111,7 +111,7 @@ fn problem_header_with_bad_clause_count_returns_error() {
     }
 }
 
-pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
+pub fn read<B: io::BufReadExt>(buf: B) -> Result<Problem, DimacsError> {
     let mut clauses : Vec<Vec<Term>> = Vec::new();
     let mut nvars = 0;
     for line in buf.lines() {
@@ -141,22 +141,22 @@ pub fn read<B: old_io::Buffer>(buf: &mut B) -> Result<Problem, DimacsError> {
 }
 
 #[cfg(test)]
-fn make_buffer(lines: &[&str]) -> old_io::MemReader {
-    let mut text = old_io::MemWriter::new();
+fn make_buffer(lines: &[&str]) -> Vec<u8> {
+    let mut text = Vec::new();
     for s in lines.iter() {
-        match text.write_str(*s) {
+        match text.write(s.as_bytes()) {
             Ok(_) => {},
             Err(e) => {
                 panic!("Write into MemReader failed with {:?}", e)
             }
         }
     }
-    old_io::MemReader::new( text.into_inner() )
+    text
 }
 
 #[test]
 fn dimacs_reader() {
-    let mut reader = make_buffer(&[
+    let text = make_buffer(&[
         "\n",
         "c\n",
         "c comment\n",
@@ -167,7 +167,7 @@ fn dimacs_reader() {
         "-3 -4 0"
     ]);
 
-    let problem = read(&mut reader).unwrap();
+    let problem = read(&text[..]).unwrap();
     assert!(problem.varcount == 5, "Expected varcount 5, got {:?}", problem.varcount);
 
     assert!(problem.expression.clauses().count() == 3);

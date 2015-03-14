@@ -66280,5 +66280,5 @@ fn g125_17(b: &mut Bencher) {
 2092 2093 2094 2095 2096 2097 2098 2099 2100 2101 2102 2103 2104 2105 2106 2107 2108 0
 2109 2110 2111 2112 2113 2114 2115 2116 2117 2118 2119 2120 2121 2122 2123 2124 2125 0");
 
-    b.iter(|| ::solver::solve(&p.expression, p.varcount, Solution::new()))
+    b.iter(|| ::solver::solve(&p.expression, p.varcount, Solution::new()).unwrap())
 }

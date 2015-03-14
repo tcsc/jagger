@@ -229,7 +229,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
     let db = &mk_test_db();
     let s = Solver::new(db);
 
-    let mk_test_clause = |&: name: &str, ord: Ordinal| -> Clause {
+    let mk_test_clause = |name: &str, ord: Ordinal| -> Clause {
         FromIterator::from_iter(
             db.select(name, gte(ord))
               .iter()
@@ -237,7 +237,7 @@ fn installed_packages_must_be_installed_or_upgraded() {
               .map(|v| Term::Lit(v)))
     };
 
-    let find_clause = |&: a: &Clause, b: &Clause| -> bool {
+    let find_clause = |a: &Clause, b: &Clause| -> bool {
         *a == *b
     };
 

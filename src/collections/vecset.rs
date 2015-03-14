@@ -101,6 +101,14 @@ impl<T: Ord> VecSet<T> {
     pub fn vec<'a>(&'a self) -> &'a Vec<T> {
         &self.items
     }
+
+    pub fn clear(&mut self) {
+        self.items = Vec::new();
+    }
+
+    pub fn reserve(&mut self, n: usize) {
+        self.items.reserve(n)
+    }
 }
 
 #[test]

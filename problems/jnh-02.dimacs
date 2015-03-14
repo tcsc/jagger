@@ -1,12 +1,5 @@
-use test::Bencher;
+c UNSAT
 
-use solver::Solution;
-use solver::benchmarks::tools;
-
-#[bench]
-fn jnh02(b: &mut Bencher) {
-
-  let p = tools::load_problem("
 p cnf 100 850
  -22   53   57   92  0
   45   63  -68  0
@@ -857,10 +850,4 @@ p cnf 100 850
   -3   -7  -14  -35  -75  -92  0
    8   12  -22  -92   94  -95  0
    3  -67  -79  0
-  -5   38   44  -53   83   84  -91  0");
-
-    b.iter(|| {
-      assert!(::solver::solve(&p.expression, p.varcount, Solution::new(p.varcount)) == None);
-      println!("ping!");
-    })
-}
+  -5   38   44  -53   83   84  -91  0

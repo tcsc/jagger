@@ -86,7 +86,7 @@ fn nextval_progresses_correctly() {
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn nextval_fails_on_overrun() {
     next_val(True);
 }
@@ -95,14 +95,8 @@ fn nextval_fails_on_overrun() {
 // Solve state tracking
 // ----------------------------------------------------------------------------
 
-#[derive(Debug)]
-struct Decision {
-    var: Var,
-    value: SolutionValue
-}
-
 struct DecisionStack {
-    stack: Vec<Decision>
+    stack: Vec<Var>
 }
 
 impl DecisionStack {
@@ -110,22 +104,22 @@ impl DecisionStack {
         DecisionStack { stack: Vec::new() }
     }
 
-    fn push(&mut self, var: Var, value: SolutionValue) {
-        self.stack.push( Decision { var: var, value: value });
+    fn push(&mut self, var: Var) {
+        self.stack.push(var);
     }
 
-    fn peek(&self) -> Option<&Decision> {
+    fn peek(&self) -> Option<&Var> {
         self.stack.last()
     }
 
-    fn mut_peek(&mut self) -> Option<&mut Decision> {
+    fn mut_peek(&mut self) -> Option<&mut Var> {
         match self.stack.len() {
             0 => None,
             n => Some(&mut self.stack[n-1])
         }
     }
 
-    fn pop(&mut self) -> Option<Decision> {
+    fn pop(&mut self) -> Option<Var> {
         self.stack.pop()
     }
 
@@ -134,8 +128,8 @@ impl DecisionStack {
 }
 
 impl Index<usize> for DecisionStack {
-    type Output = Decision;
-    fn index<'a>(&'a self, index: &usize) -> &'a Decision {
+    type Output = Var;
+    fn index<'a>(&'a self, index: &usize) -> &'a Var {
         &self.stack[*index]
     }
 }
@@ -237,29 +231,32 @@ impl SolveState {
         !self.unassigned_vars.is_empty()
     }
 
-    fn undo_decision(&mut self, d: &Decision) -> Vec<Var> {
-        println!("Undoing {:?} = {:?}, ", d.var, d.value);
+    fn undo_decision(&mut self, v: &Var) -> Vec<Var> {
+        debug!("Undoing {:?}", v);
 
-        let vars = self.implications.strip(d.var, d.value);
-        println!("Vars to unset {:?}", vars);
+        let mut vars = self.implications.strip(*v, False);
+        vars.extend(self.implications.strip(*v, True)
+                                     .iter()
+                                     .map(|&x| x));
+        debug!("Vars to unset {:?}", vars);
 
         for k in vars.iter() {
-            println!("Unsetting {:?}", k);
             self.solution.unset(*k);
             self.unassigned_vars.insert(*k);
         }
-        vars
+
+        FromIterator::from_iter(vars.iter().map(|&x|x))
     }
 
-    fn push(&mut self, var: Var, val: SolutionValue) {
-        self.stack.push(var, val)
+    fn push(&mut self, var: Var) {
+        self.stack.push(var)
     }
 
-    fn pop(&mut self) -> Option<Decision> {
+    fn pop(&mut self) -> Option<Var> {
         self.stack.pop()
     }
 
-    fn mut_peek(&mut self) -> Option<&mut Decision> {
+    fn mut_peek(&mut self) -> Option<&mut Var> {
         self.stack.mut_peek()
     }
 
@@ -273,7 +270,7 @@ impl SolveState {
      * go past the end of the stack.
      */
     fn unwind(&mut self, mut vars: VecSet<Var>) {
-        println!("Unwinding for: {:?}", vars);
+        debug!("Unwinding for: {:?}", vars);
         while !vars.is_empty() {
             match self.pop() {
                 None => panic!("Attempting to unwind an empty stack"),
@@ -285,6 +282,33 @@ impl SolveState {
                 }
             }
         }
+    }
+
+    /**
+     * Backtracks until
+     */
+    fn backtrack(&mut self) -> Option<(Var, SolutionValue)> {
+        loop {
+            match self.pop() {
+                // we've got to the end of the stack, the whole thing is
+                // unsatisfiable
+                None => return None,
+
+                Some(d) => {
+                    let value = self.solution[d];
+                    self.undo_decision(&d);
+
+                    // If the original decision set the value to False, we can try it again
+                    // with True. Otherwise we try and backtrack again.
+                    if value == False { return Some((d, True)) }
+                    // else { bactrack again }
+                }
+            }
+        }
+    }
+
+    fn level(&self) -> usize {
+        self.stack.len()
     }
 }
 
@@ -301,7 +325,7 @@ fn stack_unwound_to_expected_point() {
 
     // Create a history for the test
     for (level, x) in range_step(1, 11, 2).enumerate() {
-        state.push(x, True);
+        state.push(x);
         state.solution.set(x, True);
         state.solution.set(x+1, False);
         state.implications.insert(level, x, True, &[]);
@@ -345,31 +369,24 @@ pub fn solve(exp: &Expression,
     let mut next_move = SolverMove::Continue;
     let mut e = exp.clone();
 
-    println!("========");
+    debug!("Starting solve");
 
     while state.has_unassigned_vars() {
         let (decision_var, decision_val) = match next_move {
             SolverMove::Continue => (pick_var(&mut state.unassigned_vars), False),
+            SolverMove::Retry (x, v) => (x, v),
             SolverMove::Backtrack => {
-                println!("Attempting to backtrack...");
-                match state.pop() {
-                    None => {
-                        println!("No solution found");
-                        return None
-                    },
-                    Some (d) =>  {
-                        state.undo_decision(&d);
-                        if d.value == True { continue; };
-                        (d.var, next_val(d.value))
-                    }
+                match state.backtrack() {
+                    Some((x, v)) => (x, v),
+                    None => return None
                 }
-            },
-            SolverMove::Retry (x, v) => (x, v)
+            }
         };
 
-        println!("Stack depth: {:?}", state.stack.len());
-        state.push(decision_var, decision_val);
+        state.push(decision_var);
         state.unassigned_vars.remove(&decision_var);
+
+        debug!("Stack depth: {:?}", state.stack.len());
 
         match propagate(state.depth(), decision_var, decision_val, &mut state, &e) {
             PropagationResult::Success => {
@@ -377,22 +394,27 @@ pub fn solve(exp: &Expression,
             },
 
             PropagationResult::Contradiction (conflict) => {
-                println!("Contradiction");
-                let new_rule = state.implications.learn_conflict_clause(
-                                    decision_var,
-                                    decision_val,
-                                    conflict);
-                println!("Learned {:?}", new_rule);
-                let vars : VecSet<Var> = FromIterator::from_iter(
-                    new_rule.iter().map(|t| t.var())
-                );
-                state.unwind(vars);
-                e.add_clause(new_rule);
-                next_move = SolverMove::Continue;
+                debug!("Contradiction");
+                if state.level() == 1 {
+                    // oops - UNSAT
+                    return None
+                }
+                else {
+                    let new_rule = state.implications.learn_conflict_clause(
+                                        decision_var,
+                                        decision_val,
+                                        conflict);
+                    debug!("Learned {:?}", new_rule);
+                    let mut vars_to_reset = VecSet::with_capacity(new_rule.len());
+                    vars_to_reset.extend(new_rule.iter().map(|t| t.var()));
+                    e.add_clause(new_rule);
+                    state.unwind(vars_to_reset);
+                    next_move = SolverMove::Continue;
+                }
             },
 
             PropagationResult::EvaluatesToFalse => {
-                println!("Evaluates to false");
+                debug!("Evaluates to false");
                 next_move = SolverMove::Backtrack;
             }
         }
@@ -596,11 +618,6 @@ fn extract_var_roots(v: Var, c: &[Term], sln: &Solution) -> Vec<(Var, SolutionVa
     rval
 }
 
-// unassigned_vars: VarSet,
-//     implications: ImplicationGraph,
-//     solution: Solution,
-//     stack: DecisionStack
-
 /**
  * Propagates the logical consequences of the current solution.
  */
@@ -622,17 +639,17 @@ fn propagate(level: usize,
         let implied_val = *deduced.get(&implied_var).unwrap();
         state.solution[implied_var] = implied_val;
 
-        println!("\tChecking implications of setting {:?} = {:?}",
+        debug!("\tChecking implications of setting {:?} = {:?}",
             implied_var, implied_val);
 
         for clause in exp.clauses_containing(implied_var) {
             match analyse_clause(clause, &state.solution) {
                 ClauseAnalysis::IsUnit (term) => {
-                    println!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
+                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
                     let var = term.var();
                     let deduced_value = deduce_value(term);
 
-                    println!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
+                    debug!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
                     let roots = extract_var_roots(var, clause, &state.solution);
 
                     // Do we have any previouly-deduced values for the thing we
@@ -671,7 +688,7 @@ fn propagate(level: usize,
                     // oh, dear. All variables in the term have values and the
                     // clause evaluates to false. Bail out and let the caller
                     // know that this can't possibly be the right answer.
-                    println!("\t\tEvaluates to false");
+                    debug!("\t\tEvaluates to false");
                     return PropagationResult::EvaluatesToFalse
                 },
 

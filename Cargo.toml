@@ -7,5 +7,7 @@ authors = ["Trent Clarke <trent.clarke@gmail.com>"]
 name = "jagger"
 
 [dependencies]
-log = "0.2.4"
-env_logger = "0.2.2"
+log = "0.2.5"
+getopts = "0.2.4"
+time = "0.1.20"
+#env_logger = "0.2.5"

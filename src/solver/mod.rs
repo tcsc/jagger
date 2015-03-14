@@ -3,7 +3,7 @@ pub use self::solver::{solve};
 
 pub mod types;
 mod implication_graph;
-mod watchlist;
+//mod watchlist;
 pub mod solver;
 
 #[cfg(test)]
