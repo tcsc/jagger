@@ -28,7 +28,7 @@ impl fmt::Debug for FormulatorError {
 type FormulatorResult<T> = Result<T, FormulatorError>;
 
 fn no_var_for<T>(pkg: &Package) -> FormulatorResult<T> {
-    let s = String::from_str(pkg.name());
+    let s = pkg.name().to_string();
     Err(FormulatorError::NoVariableFor(s, pkg.ordinal()))
 }
 

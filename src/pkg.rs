@@ -163,7 +163,7 @@ pub struct PkgExp {
 impl PkgExp {
     pub fn new(name: &str, version: VersionExpression) -> PkgExp {
         PkgExp {
-            name: String::from_str(name),
+            name: name.to_string(),
             version: version
         }
     }
@@ -227,7 +227,7 @@ impl Package {
 
     pub fn new(name: &str, ordinal: Ordinal, state: State) -> Package {
         Package {
-            name: String::from_str(name),
+            name: name.to_string(),
             ordinal: ordinal,
             state: state,
             requires: Vec::new(),

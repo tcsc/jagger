@@ -76,7 +76,7 @@ fn parse_alias(a: &str) -> ArchResult<Architecture> {
         "any" => Ok(Architecture{ system: AnySystem, vendor: AnyVendor, cpu: AnyCpu }),
         "win32" => Ok(Architecture{ system: Windows, vendor: AnyVendor, cpu: I386 }),
         "win64" => Ok(Architecture{ system: Windows, vendor: AnyVendor, cpu: AMD64 }),
-        _ => Err(ArchError::UnknownAlias(String::from_str(a)))
+        _ => Err(ArchError::UnknownAlias(a.to_string()))
     }
 }
 
@@ -86,8 +86,8 @@ fn parse_system(a: &str) -> ArchResult<System> {
         "mswindows"  => Ok(Windows),
         "linux" => Ok(Linux),
         "darwin" => Ok(Darwin),
-        "" => Err(ArchError::InvalidSystem(String::from_str(a))),
-        _ => Ok(CustomSystem(String::from_str(a)))
+        "" => Err(ArchError::InvalidSystem(a.to_string())),
+        _ => Ok(CustomSystem(a.to_string()))
     }
 }
 
@@ -96,14 +96,14 @@ fn parse_cpu(a: &str) -> ArchResult<Cpu> {
         "any" => Ok(AnyCpu),
         "i386" => Ok(I386),
         "amd64" => Ok(AMD64),
-        "" => Err(ArchError::InvalidCpu(String::from_str(a))), // invalid
-        _ => Ok(CustomCpu(String::from_str(a)))
+        "" => Err(ArchError::InvalidCpu(a.to_string())), // invalid
+        _ => Ok(CustomCpu(a.to_string()))
     }
 }
 
 #[test]
 fn empty_cpu_is_an_error() {
-    assert!(parse_cpu("") == Err(ArchError::InvalidCpu(String::from_str(""))))
+    assert!(parse_cpu("") == Err(ArchError::InvalidCpu("".to_string())))
 }
 
 #[test]
@@ -114,14 +114,14 @@ fn any_cpu_is_a_special_case() {
 fn parse_vendor(a: &str) -> ArchResult<Vendor> {
     match a {
         "any" => Ok(AnyVendor),
-        "" => Err(ArchError::InvalidVendor(String::from_str(a))), // Invalid
-        v => Ok(NamedVendor(String::from_str(v)))
+        "" => Err(ArchError::InvalidVendor(a.to_string())), // Invalid
+        v => Ok(NamedVendor(v.to_string()))
     }
 }
 
 #[test]
 fn empty_vendor_is_an_error() {
-    assert!(parse_vendor("") == Err(ArchError::InvalidVendor(String::from_str(""))));
+    assert!(parse_vendor("") == Err(ArchError::InvalidVendor("".to_string())));
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn any_vendor_is_a_special_case() {
  */
 fn parse_arch(a: &str) -> ArchResult<Architecture> {
     if a == "" {
-        Err(ArchError::InvalidArchitecture(String::from_str(a)))
+        Err(ArchError::InvalidArchitecture(a.to_string()))
     }
     else {
         let part_strings : Vec<&str> = a.split('-').collect();
@@ -152,7 +152,7 @@ fn parse_arch(a: &str) -> ArchResult<Architecture> {
                 Ok( Architecture {system: system, vendor: vendor, cpu: cpu} )
             }
 
-            _ => Err(ArchError::InvalidArchitecture(String::from_str(a)))
+            _ => Err(ArchError::InvalidArchitecture(a.to_string()))
         }
     }
 }
@@ -168,14 +168,14 @@ fn parse_any() {
 #[test]
 fn empty_string_is_invalid_architecture() {
     let arch = parse_arch("");
-    assert!(arch == Err(ArchError::InvalidArchitecture(String::from_str(""))));
+    assert!(arch == Err(ArchError::InvalidArchitecture("".to_string())));
 }
 
 #[test]
 fn too_many_parts_makes_an_architecture_invalid() {
     let text = "mswindows-somevendor-somerubish-i386";
     let arch = parse_arch(text);
-    assert!(arch == Err(ArchError::InvalidArchitecture(String::from_str(text))));
+    assert!(arch == Err(ArchError::InvalidArchitecture(text.to_string())));
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn parse_windows_no_vendor() {
 fn parse_windows_with_vendor() {
     let expected = Architecture {
         system: Windows,
-        vendor: NamedVendor(String::from_str("somevendor")),
+        vendor: NamedVendor("somevendor".to_string()),
         cpu: I386
     };
     let result = parse_arch("mswindows-somevendor-i386");
@@ -215,7 +215,7 @@ fn parse_windows_64() {
 #[test]
 fn empty_system_is_an_error() {
     let a = parse_arch("-i386");
-    assert!(a == Err(ArchError::InvalidSystem(String::from_str(""))));
+    assert!(a == Err(ArchError::InvalidSystem("".to_string())));
 }
 
 // ------------------------------------------------------------------------
@@ -230,7 +230,7 @@ struct VersionChunk {
 
 impl VersionChunk {
     fn new(prefix: &str, number: isize) -> VersionChunk {
-        VersionChunk { prefix: String::from_str(prefix),
+        VersionChunk { prefix: prefix.to_string(),
                        number: number }
     }
 }
@@ -255,7 +255,7 @@ pub enum VersionError {
 
 impl VersionError {
     fn invalid(s: &str) -> VersionError {
-        VersionError::InvalidVersion (String::from_str(s))
+        VersionError::InvalidVersion (s.to_string())
     }
     fn epoch(s: &str) -> VersionError {
         VersionError::InvalidEpoch(s.to_string())
@@ -391,7 +391,7 @@ impl Version {
 
         let chunks = try!(parse_upstream(upstream));
 
-        Ok(Version { epoch: epoch, chunks: chunks, revision: String::from_str(revision) })
+        Ok(Version { epoch: epoch, chunks: chunks, revision: revision.to_string() })
     }
 }
 
@@ -504,7 +504,7 @@ fn dotted_decimal_versions_are_valid() {
                       VersionChunk::new(".", 2),
                       VersionChunk::new(".", 3),
                       VersionChunk::new(".", 4)],
-        revision: String::from_str("5")
+        revision: "5".to_string()
     });
     let actual = Version::parse("1.2.3.4-5");
     assert!(expected == actual, "Expected: {:?}, got: {:?}", expected, actual);
@@ -515,7 +515,7 @@ fn lexical_versions_are_valid() {
     let expected = Ok(Version {
         epoch: 0,
         chunks: vec![ VersionChunk::new("someversion", 0) ],
-        revision: String::from_str("1")
+        revision: "1".to_string()
     });
     let actual = Version::parse("someversion-1");
     assert!(expected == actual, "Expected: {:?}, got: {:?}", expected, actual);
@@ -528,7 +528,7 @@ fn versions_are_comparable() {
                                     VersionChunk::new(".", 2),
                                     VersionChunk::new(".", 3),
                                     VersionChunk::new(".", 4)],
-                      revision: String::from_str("")
+                      revision: "".to_string()
     };
 
     let b = Version { epoch: 0,
@@ -536,7 +536,7 @@ fn versions_are_comparable() {
                                     VersionChunk::new(".", 2),
                                     VersionChunk::new(".", 3),
                                     VersionChunk::new(".", 5)],
-                      revision: String::from_str("")
+                      revision: "".to_string()
     };
 
     assert!(a < b);
@@ -549,12 +549,12 @@ fn epochs_are_compared_first() {
     let a = Version {
         epoch: 1,
         chunks: vec![VersionChunk::new("a", 1)],
-        revision: String::from_str("")
+        revision: "".to_string()
     };
     let b = Version {
         epoch: 2,
         chunks: vec![VersionChunk::new("a", 1)],
-        revision: String::from_str("")
+        revision: "".to_string()
     };
     assert!(a < b);
     assert!(a != b);
@@ -566,12 +566,12 @@ fn upstream_versions_chunk_prefixes_are_compared() {
     let a = Version {
         epoch: 0,
         chunks: vec![VersionChunk::new("a", 1)],
-        revision: String::from_str("")
+        revision: "".to_string()
     };
     let b = Version {
         epoch: 0, chunks:
         vec![VersionChunk::new("b", 1)],
-        revision: String::from_str("")
+        revision: "".to_string()
     };
     assert!(a < b);
     assert!(a != b);
@@ -580,22 +580,22 @@ fn upstream_versions_chunk_prefixes_are_compared() {
 
 #[test]
 fn upstream_versions_chunk_numbers_are_compared() {
-    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("")};
-    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 2)], revision: String::from_str("")};
+    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: "".to_string()};
+    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 2)], revision: "".to_string()};
     assert!(a < b);
     assert!(b > a);
 }
 
 #[test]
 fn upstream_version_superstring_wins() {
-    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("")};
+    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: "".to_string()};
     let b = Version {
         epoch: 0,
         chunks: vec![
             VersionChunk::new("a", 1),
             VersionChunk::new("b", 2)
         ],
-        revision: String::from_str("")
+        revision: "".to_string()
     };
     assert!(a < b);
     assert!(b > a);
@@ -603,16 +603,16 @@ fn upstream_version_superstring_wins() {
 
 #[test]
 fn package_revision_breaks_ties() {
-    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("1")};
-    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("2")};
+    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: "1".to_string()};
+    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: "2".to_string()};
     assert!(a < b);
     assert!(b > a);
 }
 
 #[test]
 fn tildes_sort_before_anything_else() {
-    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("~", 1)], revision: String::from_str("")};
-    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: String::from_str("")};
+    let a = Version {epoch: 0, chunks: vec![VersionChunk::new("~", 1)], revision: "".to_string()};
+    let b = Version {epoch: 0, chunks: vec![VersionChunk::new("a", 1)], revision: "".to_string()};
     assert!(a < b);
     assert!(b > a);
 }
