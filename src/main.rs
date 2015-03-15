@@ -17,7 +17,6 @@ mod solver;
 mod dimacs;
 mod formulator;
 
-use dimacs::read as read_dimacs;
 use getopts::Options;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -65,6 +64,8 @@ fn arg_parser_reads_input_file() {
 #[cfg(not(test))]
 fn main() {
 	use std::fs::File;
+
+	use dimacs::read as read_dimacs;
 	use solver::{Solution, solve};
 
 	let args : Vec<String> = std::env::args().collect();

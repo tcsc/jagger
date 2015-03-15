@@ -648,7 +648,7 @@ impl<'a> dot::GraphWalk<'a, Node, Edge> for ImplicationGraph {
 }
 
 pub fn dump_graph(filename: &str, g: &ImplicationGraph) {
-    use std::old_io::File;
-    let mut f = File::create(&Path::new(filename));
+    use std::fs::File;
+    let mut f = File::create(&Path::new(filename)).unwrap();
     dot::render(g, &mut f).unwrap();
 }

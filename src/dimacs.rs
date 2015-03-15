@@ -111,7 +111,7 @@ fn problem_header_with_bad_clause_count_returns_error() {
     }
 }
 
-pub fn read<B: io::BufReadExt>(buf: B) -> Result<Problem, DimacsError> {
+pub fn read<B: io::BufRead>(buf: B) -> Result<Problem, DimacsError> {
     let mut clauses : Vec<Vec<Term>> = Vec::new();
     let mut nvars = 0;
     for line in buf.lines() {
@@ -144,7 +144,7 @@ pub fn read<B: io::BufReadExt>(buf: B) -> Result<Problem, DimacsError> {
 fn make_buffer(lines: &[&str]) -> Vec<u8> {
     let mut text = Vec::new();
     for s in lines.iter() {
-        match text.write(s.as_bytes()) {
+        match text.write_all(s.as_bytes()) {
             Ok(_) => {},
             Err(e) => {
                 panic!("Write into MemReader failed with {:?}", e)
