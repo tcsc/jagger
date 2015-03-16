@@ -71,3 +71,46 @@ impl Brancher for NaiveBrancher {
 
     fn ping(&mut self, _: Var) {}
 }
+
+#[test]
+fn naive_brancher_returns_lowest_variable() {
+    let mut b = NaiveBrancher::new(10);
+    for i in (1..11) {
+        let (var, val) = b.pick_branch().unwrap();
+        assert_eq!(i, var);
+        b.remove(i);
+    }
+}
+
+#[test]
+fn naive_brancher_always_returns_false() {
+    let mut b = NaiveBrancher::new(10);
+    for i in (1..11) {
+        let (var, val) = b.pick_branch().unwrap();
+        assert_eq!(False, val);
+        b.remove(i);
+    }
+}
+
+#[test]
+fn naive_brancher_knows_its_contents() {
+    let mut b = NaiveBrancher::new(10);
+    assert!((1..11).all(|x| b.contains(x)));
+    assert!(!b.contains(0));
+    assert!(!b.contains(11));
+}
+
+#[test]
+fn naive_brancher_knows_when_its_empty() {
+    let mut b = NaiveBrancher::new(1);
+    assert!(!b.is_empty());
+    b.remove(1);
+    assert!(b.is_empty());
+}
+
+#[test]
+fn naive_brancher_returns_none_when_empty() {
+    let mut b = NaiveBrancher::new(1);
+    b.remove(1);
+    assert!(b.pick_branch().is_none());
+}
