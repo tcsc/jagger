@@ -598,6 +598,9 @@ fn find_paths_finds_shortest_path_first() {
 pub type Node = Assignment;
 pub type Edge = (Node, Node);
 
+/**
+ *
+ */
 impl<'a> dot::Labeller<'a, Node, Edge> for ImplicationGraph {
     fn graph_id(&'a self) -> dot::Id<'a> {
         dot::Id::new("Implications").unwrap()
@@ -617,6 +620,9 @@ impl<'a> dot::Labeller<'a, Node, Edge> for ImplicationGraph {
     }
 }
 
+/**
+ *
+ */
 impl<'a> dot::GraphWalk<'a, Node, Edge> for ImplicationGraph {
     fn nodes(&self) -> dot::Nodes<'a, Node> {
         let mut nodes = Vec::with_capacity(self.len());

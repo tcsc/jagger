@@ -9,6 +9,7 @@ use solver::types::{Solution, SolutionValue, Expression, Var, VarSet, Clause, Te
 use solver::types::SolutionValue::{Unassigned, True, False, Conflict};
 use solver::types::Term::{Lit, Not};
 use solver::implication_graph::{ImplicationGraph, dump_graph};
+use solver::brancher::{Brancher, NaiveBrancher};
 use collections::{VecSet, VecMap};
 
 // ----------------------------------------------------------------------------
@@ -55,21 +56,6 @@ impl ImplicationMap {
 // ----------------------------------------------------------------------------
 //
 // ----------------------------------------------------------------------------
-
-/**
- * Chooses the next variable to assign from the set.
- */
-fn pick_var(vars: &VarSet) -> Var {
-    *vars.iter().next().unwrap()
-}
-
-fn scan_unassigned_vars(varcount: usize, sln: &Solution) -> VarSet {
-    let mut result = VarSet::new();
-    for v in (1 .. varcount+1) {
-        if !sln.is_assigned(v) { result.insert(v); }
-    }
-    result
-}
 
 fn next_val(v: SolutionValue) -> SolutionValue {
     match v {
@@ -174,8 +160,9 @@ fn trying_valid_assignment_on_new_var_succeeds() {
         &[Lit(5), Lit(6)],
         &[Lit(2), Not(6)]
     ]);
+
     let mut state = SolveState {
-        unassigned_vars: FromIterator::from_iter((1..6).filter(|x| *x != 5)),
+        brancher: &mut NaiveBrancher::new(6),
         solution: Solution::new(6),
         implications: ImplicationGraph::new(),
         stack: DecisionStack::new()
@@ -183,7 +170,9 @@ fn trying_valid_assignment_on_new_var_succeeds() {
 
     assert!(propagate(1, 5, False, &mut state, &exp).is_success());
     assert!(state.solution[5] == False);
-    assert!(!state.unassigned_vars.contains(&5));
+    assert!(state.brancher.contains(5));
+    assert!(!state.brancher.contains(2));
+    assert!(!state.brancher.contains(6));
 }
 
 #[test]
@@ -195,13 +184,16 @@ fn trying_invalid_assignment_on_new_var_fails() {
         &[Lit(2), Not(6)]
     ]);
 
-    let mut state = SolveState::new(6);
-    let expected_vars = state.unassigned_vars.clone();
+    let mut brancher = NaiveBrancher::new(6);
+    let mut state = SolveState::new(6, &mut brancher);
 
     assert!(propagate(1, 1, False, &mut state, &exp).is_failure());
     assert!(state.solution[1] == False);
-    assert!(state.unassigned_vars == expected_vars,
-            "Expected {:?}, Got {:?}", expected_vars, state.unassigned_vars);
+    assert!((1..6).all(|x| state.brancher.contains(x)));
+
+    // assert!(state.unassigned_vars == expected_vars,
+    //         "Expected {:?}, Got {:?}", expected_vars, state.unassigned_vars);
+//    panic!("fix this test");
 }
 
 // ----------------------------------------------------------------------------
@@ -210,17 +202,17 @@ fn trying_invalid_assignment_on_new_var_fails() {
 
 enum SolverMove { Continue, Backtrack, Retry (Var, SolutionValue) }
 
-struct SolveState {
-    unassigned_vars: VarSet,
+struct SolveState<'a> {
+    brancher: &'a mut Brancher,
     implications: ImplicationGraph,
     solution: Solution,
     stack: DecisionStack
 }
 
-impl SolveState {
-    fn new(varcount: usize) -> SolveState {
+impl<'a> SolveState<'a> {
+    fn new(varcount: usize, brancher: &'a mut Brancher) -> SolveState<'a> {
         SolveState {
-            unassigned_vars: FromIterator::from_iter(1..varcount+1),
+            brancher: brancher,
             implications: ImplicationGraph::new(),
             solution: Solution::new(varcount),
             stack: DecisionStack::new()
@@ -228,7 +220,7 @@ impl SolveState {
     }
 
     fn has_unassigned_vars(&self) -> bool {
-        !self.unassigned_vars.is_empty()
+        !self.brancher.is_empty()
     }
 
     fn undo_decision(&mut self, v: &Var) -> Vec<Var> {
@@ -242,14 +234,15 @@ impl SolveState {
 
         for k in vars.iter() {
             self.solution.unset(*k);
-            self.unassigned_vars.insert(*k);
+            self.brancher.insert(*k);
         }
 
         FromIterator::from_iter(vars.iter().map(|&x|x))
     }
 
     fn push(&mut self, var: Var) {
-        self.stack.push(var)
+        self.stack.push(var);
+        self.brancher.remove(var);
     }
 
     fn pop(&mut self) -> Option<Var> {
@@ -317,7 +310,7 @@ fn stack_unwound_to_expected_point() {
     use solver::implication_graph;
 
     let mut state = SolveState {
-        unassigned_vars: VarSet::new(),
+        brancher: &mut NaiveBrancher::new(10),
         implications: ImplicationGraph::new(),
         solution: Solution::new(10),
         stack: DecisionStack::new()
@@ -365,7 +358,8 @@ fn stack_unwound_to_expected_point() {
 pub fn solve(exp: &Expression,
              varcount: usize,
              initial_sln: Solution) -> Option<Solution> {
-    let mut state = SolveState::new(varcount);
+    let mut brancher = NaiveBrancher::new(varcount);
+    let mut state = SolveState::new(varcount, &mut brancher);
     let mut next_move = SolverMove::Continue;
     let mut e = exp.clone();
 
@@ -373,7 +367,7 @@ pub fn solve(exp: &Expression,
 
     while state.has_unassigned_vars() {
         let (decision_var, decision_val) = match next_move {
-            SolverMove::Continue => (pick_var(&mut state.unassigned_vars), False),
+            SolverMove::Continue => state.brancher.pick_branch().unwrap(),
             SolverMove::Retry (x, v) => (x, v),
             SolverMove::Backtrack => {
                 match state.backtrack() {
@@ -384,9 +378,8 @@ pub fn solve(exp: &Expression,
         };
 
         state.push(decision_var);
-        state.unassigned_vars.remove(&decision_var);
 
-        debug!("Stack depth: {:?}", state.stack.len());
+        println!("Decision: {:?} = {:?}, Stack depth: {:?}", decision_var, decision_val, state.stack.len());
 
         match propagate(state.depth(), decision_var, decision_val, &mut state, &e) {
             PropagationResult::Success => {
@@ -639,17 +632,17 @@ fn propagate(level: usize,
         let implied_val = *deduced.get(&implied_var).unwrap();
         state.solution[implied_var] = implied_val;
 
-        debug!("\tChecking implications of setting {:?} = {:?}",
+        println!("\tChecking implications of setting {:?} = {:?}",
             implied_var, implied_val);
 
         for clause in exp.clauses_containing(implied_var) {
             match analyse_clause(clause, &state.solution) {
                 ClauseAnalysis::IsUnit (term) => {
-                    debug!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
+                    println!("\t\tFound unit clause {:?}, term of interest is {:?}", clause, term);
                     let var = term.var();
                     let deduced_value = deduce_value(term);
 
-                    debug!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
+                    println!("\t\tDeduced that {:?} = {:?}", var, deduced_value);
                     let roots = extract_var_roots(var, clause, &state.solution);
 
                     // Do we have any previouly-deduced values for the thing we
@@ -659,7 +652,7 @@ fn propagate(level: usize,
                         // processing
                         Unassigned => {
                             state.implications.insert(level, var, deduced_value, &roots[..]);
-                            state.unassigned_vars.remove(&var);
+                            state.brancher.remove(var);
                             deduced.insert(var, deduced_value);
                             queue.push(var);
                         },
@@ -704,7 +697,7 @@ fn propagation_deduces_true_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Lit(3), Lit(4)]]);
 
     let mut state = SolveState {
-        unassigned_vars: VarSet::new(),
+        brancher: &mut NaiveBrancher::new(4),
         solution: Solution::from(4, &[(1, False), (2, False)]),
         stack: DecisionStack::new(),
         implications: ImplicationGraph::from(&[
@@ -713,12 +706,14 @@ fn propagation_deduces_true_value() {
         ]),
     };
 
+    state.brancher.remove_all(&[1, 2, 4]);
+
     match propagate(1, 4, False, &mut state, &exp) {
         PropagationResult::Success => {
             assert_eq!(state.solution[3], True);
             assert_eq!(state.solution[4], False);
             assert_eq!(state.implications.len(), 4);
-            assert!(state.unassigned_vars.is_empty());
+            assert!(!state.has_unassigned_vars());
         },
         other => {
             panic!("Unexpected propagation result: {:?}", other)
@@ -731,7 +726,7 @@ fn propagation_deduces_false_value() {
     let exp = Expression::from(&[&[Lit(1), Lit(2), Not(3), Lit(4)]]);
 
     let mut state = SolveState {
-        unassigned_vars: VarSet::new(),
+        brancher: &mut NaiveBrancher::new(4),
         implications: ImplicationGraph::from(&[
             (1, (1, False), &[]),
             (2, (2, False), &[])
@@ -740,11 +735,13 @@ fn propagation_deduces_false_value() {
         stack: DecisionStack::new()
     };
 
+    state.brancher.remove_all(&[1, 2, 4]);
+
     match propagate(3, 4, False, &mut state, &exp) {
         PropagationResult::Success => {
             assert_eq!(state.solution[4], False);
             assert_eq!(state.implications.len(), 4);
-            assert!(state.unassigned_vars.is_empty());
+            assert!(!state.has_unassigned_vars());
         },
         other => {
             panic!("Unexpected propagation result: {:?}", other)
@@ -760,7 +757,7 @@ fn propagation_detects_contradictions() {
     ]);
 
     let mut state = SolveState {
-        unassigned_vars: VarSet::new(),
+        brancher: &mut NaiveBrancher::new(4),
         implications: ImplicationGraph::from(&[(1, (1, False), &[])]),
         solution: Solution::from(3, &[(1, False)]),
         stack: DecisionStack::new()
@@ -789,7 +786,7 @@ fn propagation_detects_evaluation_to_false() {
     ]);
 
     let mut state = SolveState {
-        unassigned_vars: VarSet::new(),
+        brancher: &mut NaiveBrancher::new(4),
         implications: ImplicationGraph::from(&[
             (1, (1, False), &[]),
             (2, (2, False), &[])
